@@ -8,6 +8,10 @@ export interface AuthUser {
   role: string;
 }
 
+function isAuthUser(value: Partial<AuthUser>): value is AuthUser {
+  return Boolean(value.id && value.email && value.role);
+}
+
 // Extend Express Request
 declare global {
   namespace Express {
@@ -25,13 +29,21 @@ function extractToken(req: Request): string | null {
 
 export function requireAuth(req: Request, _res: Response, next: NextFunction): void {
   const token = extractToken(req);
+  if (token && token.length > 4096) {
+    const err = Object.assign(new Error('Invalid token'), { status: 401, code: 'AUTH_INVALID' });
+    next(err);
+    return;
+  }
   if (!token) {
     const err = Object.assign(new Error('Authentication required'), { status: 401, code: 'AUTH_REQUIRED' });
     next(err);
     return;
   }
   try {
-    const decoded = jwt.verify(token, getJwtSecret()) as AuthUser;
+    const decoded = jwt.verify(token, getJwtSecret(), { algorithms: ['HS256'] }) as Partial<AuthUser>;
+    if (!isAuthUser(decoded)) {
+      throw new Error('AUTH_INVALID');
+    }
     req.user = decoded;
     next();
   } catch {
@@ -42,13 +54,15 @@ export function requireAuth(req: Request, _res: Response, next: NextFunction): v
 
 export function optionalAuth(req: Request, _res: Response, next: NextFunction): void {
   const token = extractToken(req);
-  if (!token) {
+  if (!token || token.length > 4096) {
     next();
     return;
   }
   try {
-    const decoded = jwt.verify(token, getJwtSecret()) as AuthUser;
-    req.user = decoded;
+    const decoded = jwt.verify(token, getJwtSecret(), { algorithms: ['HS256'] }) as Partial<AuthUser>;
+    if (isAuthUser(decoded)) {
+      req.user = decoded;
+    }
   } catch {
     // Invalid token — just proceed without user
   }

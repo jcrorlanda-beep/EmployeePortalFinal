@@ -43,32 +43,53 @@ const employeeName = (employees: Employee[], employeeId: string) => {
 };
 
 export function SopLibraryPage() {
+  const pageSize = 6;
   const [documents, setDocuments] = useState<SopDocument[]>([]);
   const [acknowledgements, setAcknowledgements] = useState<SopAcknowledgement[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [draft, setDraft] = useState<SopDocumentDraft>(emptyDocumentDraft);
   const [editingDocumentId, setEditingDocumentId] = useState<string | null>(null);
+  const [query, setQuery] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [sortBy, setSortBy] = useState<'title-asc' | 'effective-desc' | 'status'>('effective-desc');
+  const [page, setPage] = useState(1);
   const [ackDocumentId, setAckDocumentId] = useState('');
   const [ackEmployeeId, setAckEmployeeId] = useState('');
   const [ackNotes, setAckNotes] = useState('');
   const [formError, setFormError] = useState('');
   const [loadError, setLoadError] = useState('');
   const [isLoading, setIsLoading] = useState(true);
+  const [isSubmittingDocument, setIsSubmittingDocument] = useState(false);
+  const [isAcknowledging, setIsAcknowledging] = useState(false);
+  const [pendingArchiveId, setPendingArchiveId] = useState<string | null>(null);
   const [serviceMode, setServiceMode] = useState<'api' | 'fallback'>('fallback');
   const [serviceMessage, setServiceMessage] = useState('Using local fallback data until the backend is available.');
 
   const categoryOptions = useMemo(() => Array.from(new Set(documents.map((document) => document.category))).sort(), [documents]);
   const documentById = useMemo(() => new Map(documents.map((document) => [document.id, document])), [documents]);
   const filteredDocuments = useMemo(
-    () =>
-      documents.filter((document) => {
+    () => {
+      const normalizedQuery = query.trim().toLowerCase();
+      const filtered = documents.filter((document) => {
         const categoryMatch = categoryFilter === 'all' || document.category === categoryFilter;
         const statusMatch = statusFilter === 'all' || document.status === statusFilter;
-        return categoryMatch && statusMatch;
-      }),
-    [categoryFilter, documents, statusFilter],
+        const queryMatch = !normalizedQuery || `${document.title} ${document.owner} ${document.fileReference}`.toLowerCase().includes(normalizedQuery);
+        return categoryMatch && statusMatch && queryMatch;
+      });
+
+      return [...filtered].sort((left, right) => {
+        if (sortBy === 'title-asc') return left.title.localeCompare(right.title);
+        if (sortBy === 'status') return left.status.localeCompare(right.status);
+        return (right.effectiveDate ?? '').localeCompare(left.effectiveDate ?? '');
+      });
+    },
+    [categoryFilter, documents, query, sortBy, statusFilter],
+  );
+  const totalPages = Math.max(1, Math.ceil(filteredDocuments.length / pageSize));
+  const pagedDocuments = useMemo(
+    () => filteredDocuments.slice((page - 1) * pageSize, page * pageSize),
+    [filteredDocuments, page, pageSize],
   );
 
   const refreshSops = async () => {
@@ -116,6 +137,7 @@ export function SopLibraryPage() {
 
   const submitDocument = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (isSubmittingDocument) return;
     const normalizedDraft: SopDocumentDraft = {
       ...draft,
       title: draft.title.trim(),
@@ -132,25 +154,48 @@ export function SopLibraryPage() {
       return;
     }
 
-    if (editingDocumentId) {
-      await sopService.updateDocument(editingDocumentId, normalizedDraft, createAuditMetadata('mvp-admin', 'Phase 006 SOP/document update'));
-    } else {
-      await sopService.createDocument(normalizedDraft, createAuditMetadata('mvp-admin', 'Phase 006 SOP/document create'));
+    setFormError('');
+    setIsSubmittingDocument(true);
+    try {
+      if (editingDocumentId) {
+        await sopService.updateDocument(editingDocumentId, normalizedDraft, createAuditMetadata('mvp-admin', 'Phase 006 SOP/document update'));
+      } else {
+        await sopService.createDocument(normalizedDraft, createAuditMetadata('mvp-admin', 'Phase 006 SOP/document create'));
+      }
+      await refreshSops();
+      resetForm();
+    } catch (error) {
+      setFormError(error instanceof Error ? error.message : 'Unable to save the SOP/document record.');
+    } finally {
+      setIsSubmittingDocument(false);
     }
-    await refreshSops();
-    resetForm();
   };
 
   const archiveDocument = async (documentId: string) => {
-    await sopService.archiveDocument(documentId, createAuditMetadata('mvp-admin', 'Phase 006 SOP/document archive'));
-    await refreshSops();
+    if (pendingArchiveId) return;
+    setPendingArchiveId(documentId);
+    try {
+      await sopService.archiveDocument(documentId, createAuditMetadata('mvp-admin', 'Phase 006 SOP/document archive'));
+      await refreshSops();
+    } catch (error) {
+      setFormError(error instanceof Error ? error.message : 'Unable to archive the SOP/document record.');
+    } finally {
+      setPendingArchiveId(null);
+    }
   };
 
   const acknowledgeDocument = async () => {
-    if (!ackDocumentId || !ackEmployeeId) return;
-    await sopService.acknowledgeDocument(ackDocumentId, ackEmployeeId, ackNotes, createAuditMetadata('mvp-admin', 'Phase 006 SOP acknowledgement placeholder'));
-    await refreshSops();
-    setAckNotes('');
+    if (!ackDocumentId || !ackEmployeeId || isAcknowledging) return;
+    setIsAcknowledging(true);
+    try {
+      await sopService.acknowledgeDocument(ackDocumentId, ackEmployeeId, ackNotes, createAuditMetadata('mvp-admin', 'Phase 006 SOP acknowledgement placeholder'));
+      await refreshSops();
+      setAckNotes('');
+    } catch (error) {
+      setFormError(error instanceof Error ? error.message : 'Unable to record the SOP acknowledgement.');
+    } finally {
+      setIsAcknowledging(false);
+    }
   };
 
   return (
@@ -183,15 +228,17 @@ export function SopLibraryPage() {
             <label className="full-width">Description<textarea value={draft.description} onChange={(event) => setDraft({ ...draft, description: event.target.value })} /></label>
             <label className="inline-check full-width"><input type="checkbox" checked={draft.acknowledgementRequired} onChange={(event) => setDraft({ ...draft, acknowledgementRequired: event.target.checked })} /> Acknowledgement required</label>
           </div>
-          <div className="button-row"><button className="primary" type="submit">{editingDocumentId ? 'Save document' : 'Add document'}</button><button className="secondary" type="button" onClick={resetForm}>Clear</button></div>
+          <div className="button-row"><button className="primary" disabled={isSubmittingDocument} type="submit">{isSubmittingDocument ? 'Saving…' : editingDocumentId ? 'Save document' : 'Add document'}</button><button className="secondary" disabled={isSubmittingDocument} type="button" onClick={resetForm}>Clear</button></div>
         </form>
 
         <div className="cards single-column">
           <div className="filter-card training-filter-card">
-            <label>Category<select value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)}><option value="all">All categories</option>{categoryOptions.map((category) => <option key={category} value={category}>{category}</option>)}</select></label>
-            <label>Status<select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}><option value="all">All statuses</option>{documentStatusOptions.map((status) => <option key={status} value={status}>{status}</option>)}</select></label>
+            <label>Search<input value={query} onChange={(event) => { setPage(1); setQuery(event.target.value); }} placeholder="Search title, owner, or reference" /></label>
+            <label>Category<select value={categoryFilter} onChange={(event) => { setPage(1); setCategoryFilter(event.target.value); }}><option value="all">All categories</option>{categoryOptions.map((category) => <option key={category} value={category}>{category}</option>)}</select></label>
+            <label>Status<select value={statusFilter} onChange={(event) => { setPage(1); setStatusFilter(event.target.value); }}><option value="all">All statuses</option>{documentStatusOptions.map((status) => <option key={status} value={status}>{status}</option>)}</select></label>
+            <label>Sort by<select value={sortBy} onChange={(event) => { setPage(1); setSortBy(event.target.value as typeof sortBy); }}><option value="effective-desc">Newest effective date</option><option value="title-asc">Title A-Z</option><option value="status">Status</option></select></label>
           </div>
-          {isLoading ? <EmptyStateCard title="Loading SOP documents" message="Fetching documents and acknowledgement records." /> : filteredDocuments.length ? filteredDocuments.map((document) => (
+          {isLoading ? <EmptyStateCard title="Loading SOP documents" message="Fetching documents and acknowledgement records." /> : pagedDocuments.length ? pagedDocuments.map((document) => (
             <article className="record-card" key={document.id}>
               <div className="record-card-header"><h3>{document.title}</h3><EmployeePortalStatusBadge status={document.status} /></div>
               <p>{document.description || 'No description entered.'}</p>
@@ -201,12 +248,17 @@ export function SopLibraryPage() {
               <div className="training-card-footer">
                 {document.acknowledgementRequired ? <EmployeePortalStatusBadge status="Acknowledgement required" /> : <span className="muted-text">Acknowledgement optional</span>}
                 <div className="button-row compact-buttons">
-                  <button className="secondary" type="button" onClick={() => startEdit(document)}>Edit</button>
-                  <button className="secondary danger" type="button" disabled={document.status === 'Archived'} onClick={() => archiveDocument(document.id)}>Archive</button>
+                  <button className="secondary" disabled={isSubmittingDocument || pendingArchiveId === document.id} type="button" onClick={() => startEdit(document)}>Edit</button>
+                  <button className="secondary danger" type="button" disabled={document.status === 'Archived' || Boolean(pendingArchiveId)} onClick={() => archiveDocument(document.id)}>{pendingArchiveId === document.id ? 'Archiving…' : 'Archive'}</button>
                 </div>
               </div>
             </article>
           )) : <EmptyStateCard title="No SOP/documents match these filters" message="Clear filters or add a document record to continue." />}
+          <div className="button-row table-pagination-row">
+            <button className="secondary" disabled={page <= 1} onClick={() => setPage((current) => Math.max(1, current - 1))} type="button">Previous</button>
+            <span>Page {page} of {totalPages} · {filteredDocuments.length} matching documents</span>
+            <button className="secondary" disabled={page >= totalPages} onClick={() => setPage((current) => Math.min(totalPages, current + 1))} type="button">Next</button>
+          </div>
         </div>
       </div>
 
@@ -219,7 +271,7 @@ export function SopLibraryPage() {
           <label>Document<select value={ackDocumentId} onChange={(event) => setAckDocumentId(event.target.value)}>{documents.map((document) => <option key={document.id} value={document.id}>{document.title} · {document.version}</option>)}</select></label>
           <label>Employee<select value={ackEmployeeId} onChange={(event) => setAckEmployeeId(event.target.value)}>{employees.map((employee) => <option key={employee.id} value={employee.id}>{employee.firstName} {employee.lastName} · {employee.employeeNumber}</option>)}</select></label>
           <label className="full-width">Acknowledgement notes<input value={ackNotes} onChange={(event) => setAckNotes(event.target.value)} placeholder="Optional acknowledgement note" /></label>
-          <button className="primary align-end" type="button" onClick={acknowledgeDocument}>Record acknowledgement</button>
+          <button className="primary align-end" disabled={isAcknowledging} type="button" onClick={acknowledgeDocument}>{isAcknowledging ? 'Saving…' : 'Record acknowledgement'}</button>
         </div>
       </section>
 

@@ -16,6 +16,14 @@ import { portalPermissions } from '../types/permissions';
 
 export const schedulingRouter = Router();
 
+const staleRecordMessage = 'Record was updated by another user. Please refresh and try again.';
+const staleRecordError = () => Object.assign(new Error(staleRecordMessage), { status: 409, code: 'STALE_RECORD' });
+const assertFreshRecord = (expectedUpdatedAt: string | undefined, actualUpdatedAt: Date) => {
+  if (expectedUpdatedAt && actualUpdatedAt.toISOString() !== new Date(expectedUpdatedAt).toISOString()) {
+    throw staleRecordError();
+  }
+};
+
 schedulingRouter.use(
   requirePermissionForMethods(['POST', 'PATCH', 'DELETE'], portalPermissions.schedulesManage),
 );
@@ -38,7 +46,9 @@ const templateSchema = z.object({
   notes: z.string().optional(),
 });
 
-const templateUpdateSchema = templateSchema.partial();
+const templateUpdateSchema = templateSchema.partial().extend({
+  expectedUpdatedAt: z.string().optional(),
+});
 
 const instanceSchema = z.object({
   employeeId: z.string().min(1),
@@ -56,7 +66,9 @@ const instanceSchema = z.object({
   notes: z.string().optional(),
 });
 
-const instanceUpdateSchema = instanceSchema.partial();
+const instanceUpdateSchema = instanceSchema.partial().extend({
+  expectedUpdatedAt: z.string().optional(),
+});
 
 const leaveSchema = z.object({
   employeeId: z.string().min(1),
@@ -71,10 +83,13 @@ const leaveSchema = z.object({
   status: z.string().optional(),
 });
 
-const leaveUpdateSchema = leaveSchema.partial();
+const leaveUpdateSchema = leaveSchema.partial().extend({
+  expectedUpdatedAt: z.string().optional(),
+});
 
 const leaveDecisionSchema = z.object({
   reviewNotes: z.string().optional(),
+  expectedUpdatedAt: z.string().optional(),
 });
 
 const swapSchema = z.object({
@@ -91,6 +106,11 @@ const swapSchema = z.object({
 const swapDecisionSchema = z.object({
   targetEmployeeNotes: z.string().optional(),
   managerNotes: z.string().optional(),
+  expectedUpdatedAt: z.string().optional(),
+});
+
+const swapCancelSchema = z.object({
+  expectedUpdatedAt: z.string().optional(),
 });
 
 const actorFromRequest = (request: { user?: { email?: string } }) => request.user?.email ?? 'anonymous';
@@ -373,6 +393,7 @@ schedulingRouter.patch('/api/employee-portal/leave-requests/:id', requireAuth, a
     }
 
     const payload = parsed.data;
+    assertFreshRecord(payload.expectedUpdatedAt, existing.updatedAt);
     const updated = await prisma.ptoRequest.update({
       where: { id: String(req.params.id) },
       data: {
@@ -412,6 +433,7 @@ schedulingRouter.post('/api/employee-portal/leave-requests/:id/approve', require
     }
 
     const actor = actorFromRequest(req);
+    assertFreshRecord(parsed.data.expectedUpdatedAt, existing.updatedAt);
     const updated = await prisma.ptoRequest.update({
       where: { id: String(req.params.id) },
       data: {
@@ -454,6 +476,7 @@ schedulingRouter.post('/api/employee-portal/leave-requests/:id/reject', requireA
     }
 
     const actor = actorFromRequest(req);
+    assertFreshRecord(parsed.data.expectedUpdatedAt, existing.updatedAt);
     const updated = await prisma.ptoRequest.update({
       where: { id: String(req.params.id) },
       data: {
@@ -562,6 +585,7 @@ schedulingRouter.post('/api/employee-portal/schedule-swaps/:id/accept', requireA
     if (!existing) {
       return next(Object.assign(new Error('Schedule swap not found'), { status: 404, code: 'NOT_FOUND' }));
     }
+    assertFreshRecord(parsed.data.expectedUpdatedAt, existing.updatedAt);
     const updated = await prisma.scheduleSwapRequest.update({
       where: { id: String(req.params.id) },
       data: {
@@ -598,6 +622,7 @@ schedulingRouter.post('/api/employee-portal/schedule-swaps/:id/approve', require
       return next(Object.assign(new Error('Schedule swap not found'), { status: 404, code: 'NOT_FOUND' }));
     }
     const actor = actorFromRequest(req);
+    assertFreshRecord(parsed.data.expectedUpdatedAt, existing.updatedAt);
     const updated = await prisma.scheduleSwapRequest.update({
       where: { id: String(req.params.id) },
       data: {
@@ -635,6 +660,7 @@ schedulingRouter.post('/api/employee-portal/schedule-swaps/:id/reject', requireA
     if (!existing) {
       return next(Object.assign(new Error('Schedule swap not found'), { status: 404, code: 'NOT_FOUND' }));
     }
+    assertFreshRecord(parsed.data.expectedUpdatedAt, existing.updatedAt);
     const updated = await prisma.scheduleSwapRequest.update({
       where: { id: String(req.params.id) },
       data: {
@@ -661,10 +687,15 @@ schedulingRouter.post('/api/employee-portal/schedule-swaps/:id/reject', requireA
 
 schedulingRouter.post('/api/employee-portal/schedule-swaps/:id/cancel', requireAuth, async (req, res, next) => {
   try {
+    const parsed = swapCancelSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return next(Object.assign(new Error('Validation failed'), { status: 400, code: 'VALIDATION_ERROR' }));
+    }
     const existing = await prisma.scheduleSwapRequest.findUnique({ where: { id: String(req.params.id) } });
     if (!existing) {
       return next(Object.assign(new Error('Schedule swap not found'), { status: 404, code: 'NOT_FOUND' }));
     }
+    assertFreshRecord(parsed.data.expectedUpdatedAt, existing.updatedAt);
     const updated = await prisma.scheduleSwapRequest.update({
       where: { id: String(req.params.id) },
       data: {

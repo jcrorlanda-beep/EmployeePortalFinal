@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { FormEvent } from 'react';
 import { EmployeePortalStatusBadge } from '../components/EmployeePortalStatusBadge';
 import { EmptyStateCard } from '../components/EmptyStateCard';
 import { employeeService } from '../services/employeeService';
+import { isStaleRecordError } from '../services/employeePortalApi';
 import { equipmentService, getEquipmentServiceStatus } from '../services/equipmentService';
 import type { Employee } from '../types/employeeTypes';
 import type { DamageStatus, EquipmentAssignment, EquipmentItem, ToolDeposit } from '../types/equipmentTypes';
@@ -16,6 +17,7 @@ const empName = (employees: Employee[], id: string) => {
 };
 
 export function ToolsEquipmentPage() {
+  const pageSize = 6;
   const [items, setItems] = useState<EquipmentItem[]>([]);
   const [assignments, setAssignments] = useState<EquipmentAssignment[]>([]);
   const [deposits, setDeposits] = useState<ToolDeposit[]>([]);
@@ -36,10 +38,17 @@ export function ToolsEquipmentPage() {
   const [returnId, setReturnId] = useState('');
   const [returnDamage, setReturnDamage] = useState<DamageStatus>('none');
   const [returnNotes, setReturnNotes] = useState('');
+  const [query, setQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'all' | EquipmentItem['status']>('all');
+  const [sortBy, setSortBy] = useState<'name-asc' | 'asset-tag' | 'assigned-first'>('name-asc');
+  const [page, setPage] = useState(1);
   const [itemError, setItemError] = useState('');
   const [assignError, setAssignError] = useState('');
   const [loadError, setLoadError] = useState('');
   const [isLoading, setIsLoading] = useState(true);
+  const [isSubmittingItem, setIsSubmittingItem] = useState(false);
+  const [isSubmittingAssignment, setIsSubmittingAssignment] = useState(false);
+  const [pendingReturnId, setPendingReturnId] = useState<string | null>(null);
 
   const refresh = async () => {
     const [eqList, aList, depList] = await Promise.all([
@@ -52,6 +61,27 @@ export function ToolsEquipmentPage() {
     setDeposits(depList);
     setAssignItemId((cur) => cur || eqList.find((i) => i.status === 'available')?.id || eqList[0]?.id || '');
   };
+
+  const filteredItems = useMemo(() => {
+    const normalizedQuery = query.trim().toLowerCase();
+    const filtered = items.filter((item) => {
+      const statusMatch = statusFilter === 'all' || item.status === statusFilter;
+      const text = `${item.assetTag} ${item.name} ${item.category} ${item.serialNumber ?? ''}`.toLowerCase();
+      const queryMatch = !normalizedQuery || text.includes(normalizedQuery);
+      return statusMatch && queryMatch;
+    });
+    return [...filtered].sort((left, right) => {
+      if (sortBy === 'asset-tag') return left.assetTag.localeCompare(right.assetTag);
+      if (sortBy === 'assigned-first') return Number(Boolean(right.assignedEmployeeId)) - Number(Boolean(left.assignedEmployeeId));
+      return left.name.localeCompare(right.name);
+    });
+  }, [items, query, sortBy, statusFilter]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredItems.length / pageSize));
+  const pagedItems = useMemo(
+    () => filteredItems.slice((page - 1) * pageSize, page * pageSize),
+    [filteredItems, page, pageSize],
+  );
 
   useEffect(() => {
     void Promise.all([
@@ -76,11 +106,13 @@ export function ToolsEquipmentPage() {
 
   const submitItem = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (isSubmittingItem) return;
     if (!assetTag.trim() || !itemName.trim() || !category.trim()) {
       setItemError('Asset tag, name, and category are required.');
       return;
     }
     setItemError('');
+    setIsSubmittingItem(true);
     try {
       await equipmentService.createEquipmentItem(
         assetTag.trim(),
@@ -107,16 +139,23 @@ export function ToolsEquipmentPage() {
       setPhotoRef('');
     } catch (error) {
       setItemError(error instanceof Error ? error.message : 'Unable to create equipment item.');
+      if (isStaleRecordError(error)) {
+        await refresh();
+      }
+    } finally {
+      setIsSubmittingItem(false);
     }
   };
 
   const submitAssignment = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (isSubmittingAssignment) return;
     if (!assignEmpId || !assignItemId) {
       setAssignError('Employee and equipment item are required.');
       return;
     }
     setAssignError('');
+    setIsSubmittingAssignment(true);
     try {
       await equipmentService.assignEquipment(
         assignEmpId,
@@ -129,19 +168,33 @@ export function ToolsEquipmentPage() {
       setAssignDepositId('');
     } catch (error) {
       setAssignError(error instanceof Error ? error.message : 'Unable to assign equipment.');
+      if (isStaleRecordError(error)) {
+        await refresh();
+      }
+    } finally {
+      setIsSubmittingAssignment(false);
     }
   };
 
   const returnEquipment = async () => {
-    if (!returnId) return;
+    if (!returnId || pendingReturnId) return;
+    const assignment = assignments.find((entry) => entry.id === returnId);
+    if (!assignment) return;
+    setPendingReturnId(returnId);
     try {
-      await equipmentService.returnEquipment(returnId, returnDamage, returnNotes.trim() || undefined);
+      await equipmentService.returnEquipment(returnId, returnDamage, returnNotes.trim() || undefined, assignment.updatedAt);
       await refresh();
       setReturnId('');
       setReturnDamage('none');
       setReturnNotes('');
     } catch (error) {
       setAssignError(error instanceof Error ? error.message : 'Unable to return equipment.');
+      if (isStaleRecordError(error)) {
+        await refresh();
+        setReturnId('');
+      }
+    } finally {
+      setPendingReturnId(null);
     }
   };
 
@@ -194,12 +247,17 @@ export function ToolsEquipmentPage() {
             </label>
           </div>
           <div className="button-row">
-            <button className="primary" type="submit">Add item</button>
+            <button className="primary" disabled={isSubmittingItem} type="submit">{isSubmittingItem ? 'Saving…' : 'Add item'}</button>
           </div>
         </form>
 
         <div className="cards single-column">
-          {isLoading ? <EmptyStateCard title="Loading equipment items" message="Fetching the live equipment registry and assignment state." /> : items.length ? items.map((item) => (
+          <div className="filter-card training-filter-card">
+            <label>Search<input value={query} onChange={(e) => { setPage(1); setQuery(e.target.value); }} placeholder="Search asset tag, name, category, or serial" /></label>
+            <label>Status<select value={statusFilter} onChange={(e) => { setPage(1); setStatusFilter(e.target.value as typeof statusFilter); }}><option value="all">All statuses</option>{['available', 'assigned', 'maintenance', 'retired'].map((status) => <option key={status} value={status}>{status}</option>)}</select></label>
+            <label>Sort by<select value={sortBy} onChange={(e) => { setPage(1); setSortBy(e.target.value as typeof sortBy); }}><option value="name-asc">Name A-Z</option><option value="asset-tag">Asset tag</option><option value="assigned-first">Assigned first</option></select></label>
+          </div>
+          {isLoading ? <EmptyStateCard title="Loading equipment items" message="Fetching the live equipment registry and assignment state." /> : pagedItems.length ? pagedItems.map((item) => (
             <article className="record-card" key={item.id}>
               <div className="record-card-header">
                 <h3>{item.name} — {item.assetTag}</h3>
@@ -212,6 +270,11 @@ export function ToolsEquipmentPage() {
               {item.assignedEmployeeId && <p>Assigned to: {empName(employees, item.assignedEmployeeId)}</p>}
             </article>
           )) : <EmptyStateCard title="No equipment items yet" message="Add an equipment item above." />}
+          <div className="button-row table-pagination-row">
+            <button className="secondary" disabled={page <= 1} onClick={() => setPage((current) => Math.max(1, current - 1))} type="button">Previous</button>
+            <span>Page {page} of {totalPages} · {filteredItems.length} matching items</span>
+            <button className="secondary" disabled={page >= totalPages} onClick={() => setPage((current) => Math.min(totalPages, current + 1))} type="button">Next</button>
+          </div>
         </div>
       </div>
 
@@ -241,7 +304,7 @@ export function ToolsEquipmentPage() {
           <label>Condition notes
             <input value={assignCondNotes} onChange={(e) => setAssignCondNotes(e.target.value)} placeholder="Optional condition notes at assignment" />
           </label>
-          <button className="primary align-end" type="submit">Assign equipment</button>
+          <button className="primary align-end" disabled={isSubmittingAssignment} type="submit">{isSubmittingAssignment ? 'Assigning…' : 'Assign equipment'}</button>
         </form>
       </section>
 
@@ -258,7 +321,7 @@ export function ToolsEquipmentPage() {
                 <p>Assigned: {assignment.assignedOn}{assignment.returnedOn ? ` · Returned: ${assignment.returnedOn}` : ''}</p>
                 {assignment.conditionNotes && <p>Condition notes: {assignment.conditionNotes}</p>}
                 {!assignment.returnedOn && (
-                  <button className="secondary" type="button" onClick={() => setReturnId(assignment.id)}>Process return</button>
+                  <button className="secondary" disabled={pendingReturnId === assignment.id} type="button" onClick={() => setReturnId(assignment.id)}>Process return</button>
                 )}
               </article>
             );
@@ -281,8 +344,8 @@ export function ToolsEquipmentPage() {
               <input value={returnNotes} onChange={(e) => setReturnNotes(e.target.value)} placeholder="Optional return notes" />
             </label>
             <div className="button-row">
-              <button className="primary" type="button" onClick={returnEquipment}>Confirm return</button>
-              <button className="secondary" type="button" onClick={() => { setReturnId(''); setReturnDamage('none'); setReturnNotes(''); }}>Cancel</button>
+              <button className="primary" disabled={pendingReturnId === returnId} type="button" onClick={returnEquipment}>{pendingReturnId === returnId ? 'Saving…' : 'Confirm return'}</button>
+              <button className="secondary" disabled={pendingReturnId === returnId} type="button" onClick={() => { setReturnId(''); setReturnDamage('none'); setReturnNotes(''); }}>Cancel</button>
             </div>
           </div>
         </section>

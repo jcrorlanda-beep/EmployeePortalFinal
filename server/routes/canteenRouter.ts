@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { prisma } from '../prisma/client';
 import { requireAuth } from '../middleware/auth';
 import { requirePermissionForMethods } from '../middleware/permissions';
-import { writeAuditLog } from '../services/auditService';
+import { recordAuditEvent } from '../services/auditPersistenceService';
 import { portalPermissions } from '../types/permissions';
 
 export const canteenRouter = Router();
@@ -27,7 +27,6 @@ const paymentSchema = z.object({
   notes: z.string().optional(),
 });
 
-const actorFromRequest = (request: { user?: { email?: string } }) => request.user?.email ?? 'anonymous';
 const decimalToNumber = (value: { toNumber?: () => number } | number | null | undefined) =>
   typeof value === 'number' ? value : value?.toNumber?.() ?? 0;
 
@@ -162,13 +161,15 @@ canteenRouter.post('/api/employee-portal/canteen/transactions', requireAuth, asy
     });
     await syncCanteenLedger(transaction.employeeId, transaction.payrollFormulaCode);
     const mapped = mapTransaction(transaction);
-    await writeAuditLog({
+    await recordAuditEvent({
+      request: req,
       module: 'Canteen',
       action: 'canteen.transaction.created',
-      actor: actorFromRequest(req),
+      entityType: 'canteen_transaction',
       entityId: transaction.id,
+      entityLabel: transaction.description || transaction.id,
       summary: `Created canteen transaction ${transaction.description || transaction.id}.`,
-      afterPayload: mapped,
+      afterSnapshot: mapped,
     });
     res.status(201).json({ success: true, data: mapped });
   } catch (err) {
@@ -196,14 +197,16 @@ canteenRouter.patch('/api/employee-portal/canteen/transactions/:id', requireAuth
     const transaction = await prisma.canteenTransaction.update({ where: { id: String(req.params.id) }, data });
     await syncCanteenLedger(transaction.employeeId, transaction.payrollFormulaCode);
     const mapped = mapTransaction(transaction);
-    await writeAuditLog({
+    await recordAuditEvent({
+      request: req,
       module: 'Canteen',
       action: 'canteen.transaction.updated',
-      actor: actorFromRequest(req),
+      entityType: 'canteen_transaction',
       entityId: transaction.id,
+      entityLabel: transaction.description || transaction.id,
       summary: `Updated canteen transaction ${transaction.description || transaction.id}.`,
-      beforePayload: mapTransaction(existing),
-      afterPayload: mapped,
+      beforeSnapshot: mapTransaction(existing),
+      afterSnapshot: mapped,
     });
     res.json({ success: true, data: mapped });
   } catch (err) {
@@ -237,14 +240,16 @@ canteenRouter.post('/api/employee-portal/canteen/transactions/:id/payments', req
     });
     await syncCanteenLedger(transaction.employeeId, transaction.payrollFormulaCode);
     const mapped = mapTransaction(transaction);
-    await writeAuditLog({
+    await recordAuditEvent({
+      request: req,
       module: 'Canteen',
       action: 'canteen.payment.recorded',
-      actor: actorFromRequest(req),
+      entityType: 'canteen_transaction',
       entityId: transaction.id,
+      entityLabel: transaction.description || transaction.id,
       summary: `Recorded canteen payment for ${transaction.description || transaction.id}.`,
-      beforePayload: mapTransaction(existing),
-      afterPayload: mapped,
+      beforeSnapshot: mapTransaction(existing),
+      afterSnapshot: mapped,
     });
     res.json({ success: true, data: mapped });
   } catch (err) {
@@ -274,14 +279,16 @@ canteenRouter.post('/api/employee-portal/canteen/transactions/:id/mark-payroll-d
     });
     await syncCanteenLedger(transaction.employeeId, transaction.payrollFormulaCode);
     const mapped = mapTransaction(transaction);
-    await writeAuditLog({
+    await recordAuditEvent({
+      request: req,
       module: 'Canteen',
       action: 'canteen.payroll_deduction.marked',
-      actor: actorFromRequest(req),
+      entityType: 'canteen_transaction',
       entityId: transaction.id,
+      entityLabel: transaction.description || transaction.id,
       summary: `Marked canteen transaction ${transaction.description || transaction.id} for payroll deduction.`,
-      beforePayload: mapTransaction(existing),
-      afterPayload: mapped,
+      beforeSnapshot: mapTransaction(existing),
+      afterSnapshot: mapped,
     });
     res.json({ success: true, data: mapped });
   } catch (err) {

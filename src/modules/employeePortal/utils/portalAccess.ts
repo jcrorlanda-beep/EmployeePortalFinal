@@ -1,6 +1,28 @@
 import type { EmployeePortalModuleDefinition } from './employeePortalConstants';
 
-const rolePermissions: Record<string, string[]> = {
+export type PortalPermission =
+  | 'admin.full'
+  | 'audit.view'
+  | 'employees.manage'
+  | 'employees.view'
+  | 'onboarding.manage'
+  | 'training.manage'
+  | 'sop.manage'
+  | 'reviews.manage'
+  | 'roles.manage'
+  | 'schedules.manage'
+  | 'leave.approve'
+  | 'timekeeping.manage'
+  | 'timekeeping.view'
+  | 'payroll.manage'
+  | 'payroll.view'
+  | 'benefits.manage'
+  | 'canteen.manage'
+  | 'equipment.manage'
+  | 'inventory.manage'
+  | 'discipline.manage';
+
+const rolePermissions: Record<string, PortalPermission[]> = {
   ADMIN: ['admin.full', 'audit.view'],
   role_admin: ['admin.full', 'audit.view'],
   HR_MANAGER: ['employees.manage', 'onboarding.manage', 'training.manage', 'sop.manage', 'reviews.manage', 'audit.view', 'roles.manage'],
@@ -17,7 +39,7 @@ const rolePermissions: Record<string, string[]> = {
   role_inventory_staff: ['inventory.manage', 'equipment.manage'],
 };
 
-const modulePermissionMap: Partial<Record<EmployeePortalModuleDefinition['key'], string>> = {
+export const modulePermissionMap: Partial<Record<EmployeePortalModuleDefinition['key'], PortalPermission>> = {
   employees: 'employees.manage',
   departments: 'employees.manage',
   positions: 'roles.manage',
@@ -46,9 +68,14 @@ const modulePermissionMap: Partial<Record<EmployeePortalModuleDefinition['key'],
 export const getPermissionsForRole = (role?: string) =>
   role ? rolePermissions[role] ?? rolePermissions[role.toUpperCase()] ?? [] : [];
 
+export const hasPermission = (permissions: string[], permission: PortalPermission) =>
+  permissions.includes('admin.full') || permissions.includes(permission);
+
+export const isAdminRole = (role?: string) => hasPermission(getPermissionsForRole(role), 'admin.full');
+
 export const canAccessModule = (role: string | undefined, moduleKey: EmployeePortalModuleDefinition['key']) => {
   const requiredPermission = modulePermissionMap[moduleKey];
   if (!requiredPermission) return true;
   const permissions = getPermissionsForRole(role);
-  return permissions.includes('admin.full') || permissions.includes(requiredPermission);
+  return hasPermission(permissions, requiredPermission);
 };

@@ -3,6 +3,7 @@ import type { FormEvent } from 'react';
 import { EmployeePortalStatusBadge } from '../components/EmployeePortalStatusBadge';
 import { EmptyStateCard } from '../components/EmptyStateCard';
 import { employeeService } from '../services/employeeService';
+import { isStaleRecordError } from '../services/employeePortalApi';
 import { getSchedulingServiceStatus, schedulingService } from '../services/schedulingService';
 import type { Employee } from '../types/employeeTypes';
 import type { ScheduleDay, ScheduleInstance, ScheduleTemplate } from '../types/scheduleTypes';
@@ -29,6 +30,8 @@ export function SchedulingPage() {
   const [tplFormError, setTplFormError] = useState('');
   const [loadError, setLoadError] = useState('');
   const [isLoading, setIsLoading] = useState(true);
+  const [isSubmittingTemplate, setIsSubmittingTemplate] = useState(false);
+  const [isPublishingInstance, setIsPublishingInstance] = useState(false);
 
   const refresh = async () => {
     const [tpls, insts] = await Promise.all([schedulingService.listTemplates(), schedulingService.listInstances()]);
@@ -66,6 +69,7 @@ export function SchedulingPage() {
 
   const submitTemplate = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (isSubmittingTemplate) return;
     if (!tplName.trim()) {
       setTplFormError('Template name is required.');
       return;
@@ -75,6 +79,7 @@ export function SchedulingPage() {
       return;
     }
     setTplFormError('');
+    setIsSubmittingTemplate(true);
     try {
       await schedulingService.createTemplate(tplName.trim(), tplDept.trim(), tplStart, tplEnd, tplDays);
       await refresh();
@@ -83,16 +88,27 @@ export function SchedulingPage() {
       setTplDays(['Mon', 'Tue', 'Wed', 'Thu', 'Fri']);
     } catch (error) {
       setTplFormError(error instanceof Error ? error.message : 'Unable to create schedule template.');
+      if (isStaleRecordError(error)) {
+        await refresh();
+      }
+    } finally {
+      setIsSubmittingTemplate(false);
     }
   };
 
   const publishInstance = async () => {
-    if (!instEmpId || !instTplId || !instDate) return;
+    if (!instEmpId || !instTplId || !instDate || isPublishingInstance) return;
+    setIsPublishingInstance(true);
     try {
       await schedulingService.publishInstance(instEmpId, instTplId, instDate);
       await refresh();
     } catch (error) {
       setTplFormError(error instanceof Error ? error.message : 'Unable to publish schedule instance.');
+      if (isStaleRecordError(error)) {
+        await refresh();
+      }
+    } finally {
+      setIsPublishingInstance(false);
     }
   };
 
@@ -138,7 +154,7 @@ export function SchedulingPage() {
             </div>
           </div>
           <div className="button-row">
-            <button className="primary" type="submit">Add template</button>
+            <button className="primary" disabled={isSubmittingTemplate} type="submit">{isSubmittingTemplate ? 'Saving…' : 'Add template'}</button>
           </div>
         </form>
 
@@ -177,7 +193,7 @@ export function SchedulingPage() {
           <label>Work date
             <input type="date" value={instDate} onChange={(e) => setInstDate(e.target.value)} />
           </label>
-          <button className="primary align-end" type="button" onClick={publishInstance}>Publish instance</button>
+          <button className="primary align-end" disabled={isPublishingInstance} type="button" onClick={publishInstance}>{isPublishingInstance ? 'Publishing…' : 'Publish instance'}</button>
         </div>
       </section>
 

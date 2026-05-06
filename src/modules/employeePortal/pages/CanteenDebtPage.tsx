@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { FormEvent } from 'react';
 import { EmployeePortalStatusBadge } from '../components/EmployeePortalStatusBadge';
 import { EmptyStateCard } from '../components/EmptyStateCard';
@@ -15,6 +15,7 @@ const empName = (employees: Employee[], id: string) => {
 };
 
 export function CanteenDebtPage() {
+  const pageSize = 6;
   const [transactions, setTransactions] = useState<CanteenTransaction[]>([]);
   const [ledgers, setLedgers] = useState<EmployeeDebtLedger[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
@@ -24,6 +25,10 @@ export function CanteenDebtPage() {
   const [transactionDate, setTransactionDate] = useState('');
   const [deductionType, setDeductionType] = useState<CanteenDeductionType>('salary-deduction');
   const [formulaCode, setFormulaCode] = useState('CONFIGURED_CANTEEN_DEDUCTION');
+  const [query, setQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'all' | CanteenTransactionStatus>('all');
+  const [sortBy, setSortBy] = useState<'newest' | 'oldest' | 'amount-desc'>('newest');
+  const [page, setPage] = useState(1);
   const [formError, setFormError] = useState('');
   const [loadError, setLoadError] = useState('');
   const [isLoading, setIsLoading] = useState(true);
@@ -33,6 +38,28 @@ export function CanteenDebtPage() {
     setTransactions(txList);
     setLedgers(ledgerList);
   };
+
+  const filteredTransactions = useMemo(() => {
+    const normalizedQuery = query.trim().toLowerCase();
+    const filtered = transactions.filter((tx) => {
+      const statusMatch = statusFilter === 'all' || tx.status === statusFilter;
+      const text = `${empName(employees, tx.employeeId)} ${tx.description} ${tx.payrollFormulaCode}`.toLowerCase();
+      const queryMatch = !normalizedQuery || text.includes(normalizedQuery);
+      return statusMatch && queryMatch;
+    });
+    return [...filtered].sort((left, right) => {
+      if (sortBy === 'amount-desc') return right.amount - left.amount;
+      return sortBy === 'oldest'
+        ? left.transactionDate.localeCompare(right.transactionDate)
+        : right.transactionDate.localeCompare(left.transactionDate);
+    });
+  }, [employees, query, sortBy, statusFilter, transactions]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredTransactions.length / pageSize));
+  const pagedTransactions = useMemo(
+    () => filteredTransactions.slice((page - 1) * pageSize, page * pageSize),
+    [filteredTransactions, page, pageSize],
+  );
 
   useEffect(() => {
     void Promise.all([
@@ -134,7 +161,12 @@ export function CanteenDebtPage() {
         </form>
 
         <div className="cards single-column">
-          {isLoading ? <EmptyStateCard title="Loading canteen transactions" message="Fetching transactions, balances, and payroll-ready references." /> : transactions.length ? transactions.map((tx) => (
+          <div className="filter-card training-filter-card">
+            <label>Search<input value={query} onChange={(e) => { setPage(1); setQuery(e.target.value); }} placeholder="Search employee, description, or formula" /></label>
+            <label>Status<select value={statusFilter} onChange={(e) => { setPage(1); setStatusFilter(e.target.value as typeof statusFilter); }}><option value="all">All statuses</option>{['open', 'partially-paid', 'paid', 'deducted', 'void'].map((status) => <option key={status} value={status}>{status}</option>)}</select></label>
+            <label>Sort by<select value={sortBy} onChange={(e) => { setPage(1); setSortBy(e.target.value as typeof sortBy); }}><option value="newest">Newest date</option><option value="oldest">Oldest date</option><option value="amount-desc">Highest amount</option></select></label>
+          </div>
+          {isLoading ? <EmptyStateCard title="Loading canteen transactions" message="Fetching transactions, balances, and payroll-ready references." /> : pagedTransactions.length ? pagedTransactions.map((tx) => (
             <article className="record-card" key={tx.id}>
               <div className="record-card-header">
                 <h3>{empName(employees, tx.employeeId)} — {tx.description}</h3>
@@ -159,6 +191,11 @@ export function CanteenDebtPage() {
               )}
             </article>
           )) : <EmptyStateCard title="No transactions yet" message="Add a canteen transaction above." />}
+          <div className="button-row table-pagination-row">
+            <button className="secondary" disabled={page <= 1} onClick={() => setPage((current) => Math.max(1, current - 1))} type="button">Previous</button>
+            <span>Page {page} of {totalPages} · {filteredTransactions.length} matching transactions</span>
+            <button className="secondary" disabled={page >= totalPages} onClick={() => setPage((current) => Math.min(totalPages, current + 1))} type="button">Next</button>
+          </div>
         </div>
       </div>
 

@@ -3,6 +3,7 @@ import type { FormEvent } from 'react';
 import { EmployeePortalStatusBadge } from '../components/EmployeePortalStatusBadge';
 import { EmptyStateCard } from '../components/EmptyStateCard';
 import { employeeService } from '../services/employeeService';
+import { isStaleRecordError } from '../services/employeePortalApi';
 import { getSchedulingServiceStatus, schedulingService } from '../services/schedulingService';
 import type { Employee } from '../types/employeeTypes';
 import type { ScheduleInstance, ScheduleSwapRequest, SwapStatus } from '../types/scheduleTypes';
@@ -23,6 +24,8 @@ export function ScheduleSwapPage() {
   const [formError, setFormError] = useState('');
   const [loadError, setLoadError] = useState('');
   const [isLoading, setIsLoading] = useState(true);
+  const [isSubmittingSwap, setIsSubmittingSwap] = useState(false);
+  const [pendingSwapId, setPendingSwapId] = useState<string | null>(null);
 
   const refresh = async () => {
     const [swapList, instList] = await Promise.all([
@@ -59,6 +62,7 @@ export function ScheduleSwapPage() {
 
   const submitSwap = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (isSubmittingSwap) return;
     if (!requesterId || !targetId || !instanceId) {
       setFormError('Requester, target employee, and schedule instance are required.');
       return;
@@ -68,29 +72,42 @@ export function ScheduleSwapPage() {
       return;
     }
     setFormError('');
+    setIsSubmittingSwap(true);
     try {
       await schedulingService.createSwapRequest(requesterId, targetId, instanceId, requesterNote);
       await refresh();
       setRequesterNote('');
     } catch (error) {
       setFormError(error instanceof Error ? error.message : 'Unable to submit schedule swap request.');
+      if (isStaleRecordError(error)) {
+        await refresh();
+      }
+    } finally {
+      setIsSubmittingSwap(false);
     }
   };
 
-  const updateStatus = async (id: string, status: SwapStatus, note?: string) => {
+  const updateStatus = async (swap: ScheduleSwapRequest, status: SwapStatus, note?: string) => {
+    if (pendingSwapId) return;
+    setPendingSwapId(swap.id);
     try {
       if (status === 'accepted') {
-        await schedulingService.acceptSwapRequest(id, note);
+        await schedulingService.acceptSwapRequest(swap.id, note, swap.updatedAt);
       } else if (status === 'approved' || status === 'manager-approved') {
-        await schedulingService.approveSwapRequest(id, note);
+        await schedulingService.approveSwapRequest(swap.id, note, swap.updatedAt);
       } else if (status === 'cancelled') {
-        await schedulingService.cancelSwapRequest(id);
+        await schedulingService.cancelSwapRequest(swap.id, swap.updatedAt);
       } else {
-        await schedulingService.rejectSwapRequest(id, note);
+        await schedulingService.rejectSwapRequest(swap.id, note, swap.updatedAt);
       }
       await refresh();
     } catch (error) {
       setFormError(error instanceof Error ? error.message : 'Unable to update schedule swap.');
+      if (isStaleRecordError(error)) {
+        await refresh();
+      }
+    } finally {
+      setPendingSwapId(null);
     }
   };
 
@@ -138,7 +155,7 @@ export function ScheduleSwapPage() {
             </label>
           </div>
           <div className="button-row">
-            <button className="primary" type="submit">Submit swap request</button>
+            <button className="primary" disabled={isSubmittingSwap} type="submit">{isSubmittingSwap ? 'Submitting…' : 'Submit swap request'}</button>
           </div>
         </form>
 
@@ -157,15 +174,15 @@ export function ScheduleSwapPage() {
               {swap.managerNote && <p>Manager note: {swap.managerNote}</p>}
               {swap.status === 'pending' && (
                 <div className="button-row">
-                  <button className="primary" type="button" onClick={() => updateStatus(swap.id, 'accepted', 'Accepted by target')}>Accept</button>
-                  <button className="secondary" type="button" onClick={() => updateStatus(swap.id, 'rejected', 'Rejected by target')}>Reject</button>
-                  <button className="secondary danger" type="button" onClick={() => updateStatus(swap.id, 'cancelled')}>Cancel</button>
+                  <button className="primary" disabled={pendingSwapId === swap.id} type="button" onClick={() => updateStatus(swap, 'accepted', 'Accepted by target')}>{pendingSwapId === swap.id ? 'Updating…' : 'Accept'}</button>
+                  <button className="secondary" disabled={pendingSwapId === swap.id} type="button" onClick={() => updateStatus(swap, 'rejected', 'Rejected by target')}>Reject</button>
+                  <button className="secondary danger" disabled={pendingSwapId === swap.id} type="button" onClick={() => updateStatus(swap, 'cancelled')}>Cancel</button>
                 </div>
               )}
               {swap.status === 'accepted' && (
                 <div className="button-row">
-                  <button className="primary" type="button" onClick={() => updateStatus(swap.id, 'approved', 'Manager approved')}>Manager approve</button>
-                  <button className="secondary" type="button" onClick={() => updateStatus(swap.id, 'rejected', 'Manager rejected')}>Reject</button>
+                  <button className="primary" disabled={pendingSwapId === swap.id} type="button" onClick={() => updateStatus(swap, 'approved', 'Manager approved')}>{pendingSwapId === swap.id ? 'Updating…' : 'Manager approve'}</button>
+                  <button className="secondary" disabled={pendingSwapId === swap.id} type="button" onClick={() => updateStatus(swap, 'rejected', 'Manager rejected')}>Reject</button>
                 </div>
               )}
             </article>

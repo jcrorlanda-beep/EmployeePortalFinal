@@ -42,6 +42,7 @@ const toEmployeeDraft = (employee: Employee): EmployeeDraft => ({
 });
 
 export function EmployeesPage() {
+  const pageSize = 8;
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
   const [positions, setPositions] = useState<Position[]>([]);
@@ -52,7 +53,10 @@ export function EmployeesPage() {
   const [query, setQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [departmentFilter, setDepartmentFilter] = useState('all');
+  const [sortBy, setSortBy] = useState<'name-asc' | 'name-desc' | 'recent-hire' | 'employee-number'>('name-asc');
+  const [page, setPage] = useState(1);
   const [formError, setFormError] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const refreshEmployees = async () => setEmployees(await employeeService.listEmployees());
 
@@ -78,14 +82,32 @@ export function EmployeesPage() {
 
   const filteredEmployees = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
-    return employees.filter((employee) => {
+    const filtered = employees.filter((employee) => {
       const departmentMatch = departmentFilter === 'all' || employee.departmentId === departmentFilter;
       const statusMatch = statusFilter === 'all' || employee.employmentStatus === statusFilter;
       const searchText = `${employee.employeeNumber} ${employee.firstName} ${employee.lastName} ${employee.preferredName ?? ''}`.toLowerCase();
       const queryMatch = !normalizedQuery || searchText.includes(normalizedQuery);
       return departmentMatch && statusMatch && queryMatch;
     });
-  }, [departmentFilter, employees, query, statusFilter]);
+
+    return [...filtered].sort((left, right) => {
+      if (sortBy === 'employee-number') {
+        return left.employeeNumber.localeCompare(right.employeeNumber);
+      }
+      if (sortBy === 'recent-hire') {
+        return right.hireDate.localeCompare(left.hireDate);
+      }
+      const leftName = `${left.lastName} ${left.firstName}`.toLowerCase();
+      const rightName = `${right.lastName} ${right.firstName}`.toLowerCase();
+      return sortBy === 'name-desc' ? rightName.localeCompare(leftName) : leftName.localeCompare(rightName);
+    });
+  }, [departmentFilter, employees, query, sortBy, statusFilter]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredEmployees.length / pageSize));
+  const pagedEmployees = useMemo(
+    () => filteredEmployees.slice((page - 1) * pageSize, page * pageSize),
+    [filteredEmployees, page, pageSize],
+  );
 
   const departmentName = (departmentId?: string) => departments.find((department) => department.id === departmentId)?.name ?? 'Unassigned';
   const positionName = (positionId?: string) => positions.find((position) => position.id === positionId)?.title ?? 'Unassigned';
@@ -111,6 +133,7 @@ export function EmployeesPage() {
 
   const submitEmployee = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (isSubmitting) return;
     const normalizedDraft: EmployeeDraft = {
       ...draft,
       employeeNumber: draft.employeeNumber.trim(),
@@ -131,16 +154,21 @@ export function EmployeesPage() {
       return;
     }
 
-    if (editingId) {
-      const updated = await employeeService.updateEmployee(editingId, normalizedDraft, createAuditMetadata('mvp-admin', 'Phase 002 employee update'));
-      if (updated) setSelectedId(updated.id);
-    } else {
-      const created = await employeeService.createEmployee(normalizedDraft, createAuditMetadata('mvp-admin', 'Phase 002 employee create'));
-      setSelectedId(created.id);
-    }
+    setIsSubmitting(true);
+    try {
+      if (editingId) {
+        const updated = await employeeService.updateEmployee(editingId, normalizedDraft, createAuditMetadata('mvp-admin', 'Phase 002 employee update'));
+        if (updated) setSelectedId(updated.id);
+      } else {
+        const created = await employeeService.createEmployee(normalizedDraft, createAuditMetadata('mvp-admin', 'Phase 002 employee create'));
+        setSelectedId(created.id);
+      }
 
-    await refreshEmployees();
-    resetForm();
+      await refreshEmployees();
+      resetForm();
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -173,7 +201,7 @@ export function EmployeesPage() {
             <label>Emergency contact phone<input value={draft.emergencyContactPhone ?? ''} onChange={(event) => setDraft({ ...draft, emergencyContactPhone: event.target.value })} /></label>
             <label className="full-width">Notes<textarea value={draft.notes ?? ''} onChange={(event) => setDraft({ ...draft, notes: event.target.value })} /></label>
           </div>
-          <div className="button-row"><button className="primary" type="submit">{editingId ? 'Save employee' : 'Add employee'}</button><button className="secondary" type="button" onClick={resetForm}>Clear</button></div>
+          <div className="button-row"><button className="primary" disabled={isSubmitting} type="submit">{isSubmitting ? 'Saving…' : editingId ? 'Save employee' : 'Add employee'}</button><button className="secondary" disabled={isSubmitting} type="button" onClick={resetForm}>Clear</button></div>
         </form>
 
         <aside className="summary-card">
@@ -196,16 +224,22 @@ export function EmployeesPage() {
       </div>
 
       <div className="filter-card">
-        <label>Search by name or number<input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search employees" /></label>
-        <label>Status<select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}><option value="all">All statuses</option>{statusOptions.map((status) => <option key={status} value={status}>{status}</option>)}</select></label>
-        <label>Department<select value={departmentFilter} onChange={(event) => setDepartmentFilter(event.target.value)}><option value="all">All departments</option>{departments.map((department) => <option key={department.id} value={department.id}>{department.name}</option>)}</select></label>
+        <label>Search by name or number<input value={query} onChange={(event) => { setPage(1); setQuery(event.target.value); }} placeholder="Search employees" /></label>
+        <label>Status<select value={statusFilter} onChange={(event) => { setPage(1); setStatusFilter(event.target.value); }}><option value="all">All statuses</option>{statusOptions.map((status) => <option key={status} value={status}>{status}</option>)}</select></label>
+        <label>Department<select value={departmentFilter} onChange={(event) => { setPage(1); setDepartmentFilter(event.target.value); }}><option value="all">All departments</option>{departments.map((department) => <option key={department.id} value={department.id}>{department.name}</option>)}</select></label>
+        <label>Sort by<select value={sortBy} onChange={(event) => { setPage(1); setSortBy(event.target.value as typeof sortBy); }}><option value="name-asc">Name A-Z</option><option value="name-desc">Name Z-A</option><option value="recent-hire">Most recent hire</option><option value="employee-number">Employee number</option></select></label>
       </div>
 
       <div className="table-card">
         <table>
           <thead><tr><th>No.</th><th>Name</th><th>Status</th><th>Department</th><th>Position</th><th>Role</th><th>Actions</th></tr></thead>
-          <tbody>{filteredEmployees.map((employee) => <tr key={employee.id} className={employee.id === selectedEmployee?.id ? 'selected-row' : ''}><td>{employee.employeeNumber}</td><td>{employee.firstName} {employee.lastName}</td><td><EmployeePortalStatusBadge status={employee.employmentStatus} /></td><td>{departmentName(employee.departmentId)}</td><td>{positionName(employee.positionId)}</td><td>{roleName(employee.role)}</td><td><button className="link-button" type="button" onClick={() => setSelectedId(employee.id)}>View</button><button className="link-button" type="button" onClick={() => startEdit(employee)}>Edit</button></td></tr>)}</tbody>
+          <tbody>{pagedEmployees.map((employee) => <tr key={employee.id} className={employee.id === selectedEmployee?.id ? 'selected-row' : ''}><td>{employee.employeeNumber}</td><td>{employee.firstName} {employee.lastName}</td><td><EmployeePortalStatusBadge status={employee.employmentStatus} /></td><td>{departmentName(employee.departmentId)}</td><td>{positionName(employee.positionId)}</td><td>{roleName(employee.role)}</td><td><button className="link-button" type="button" onClick={() => setSelectedId(employee.id)}>View</button><button className="link-button" type="button" onClick={() => startEdit(employee)}>Edit</button></td></tr>)}</tbody>
         </table>
+        <div className="button-row table-pagination-row">
+          <button className="secondary" disabled={page <= 1} onClick={() => setPage((current) => Math.max(1, current - 1))} type="button">Previous</button>
+          <span>Page {page} of {totalPages} · {filteredEmployees.length} matching employees</span>
+          <button className="secondary" disabled={page >= totalPages} onClick={() => setPage((current) => Math.min(totalPages, current + 1))} type="button">Next</button>
+        </div>
       </div>
     </section>
   );

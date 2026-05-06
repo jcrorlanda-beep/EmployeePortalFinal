@@ -85,11 +85,11 @@ export const disciplineService = {
     );
   },
 
-  async updateRecordStatus(id: string, status: DisciplineRecordStatus): Promise<DisciplineRecord> {
+  async updateRecordStatus(id: string, status: DisciplineRecordStatus, expectedUpdatedAt?: string): Promise<DisciplineRecord> {
     return callApi(() =>
       portalApiFetch<DisciplineRecord>(`/discipline/records/${id}`, {
         method: 'PATCH',
-        body: JSON.stringify({ status }),
+        body: JSON.stringify({ status, expectedUpdatedAt }),
       }),
     );
   },

@@ -3,10 +3,19 @@ import { z } from 'zod';
 import { prisma } from '../prisma/client';
 import { requireAuth } from '../middleware/auth';
 import { requirePermissionForMethods } from '../middleware/permissions';
-import { writeAuditLog } from '../services/auditService';
+import { recordAuditEvent } from '../services/auditPersistenceService';
+import { syncAttachmentReference } from '../services/attachmentPersistenceService';
 import { portalPermissions } from '../types/permissions';
 
 export const disciplineRouter = Router();
+
+const staleRecordMessage = 'Record was updated by another user. Please refresh and try again.';
+const staleRecordError = () => Object.assign(new Error(staleRecordMessage), { status: 409, code: 'STALE_RECORD' });
+const assertFreshRecord = (expectedUpdatedAt: string | undefined, actualUpdatedAt: Date) => {
+  if (expectedUpdatedAt && actualUpdatedAt.toISOString() !== new Date(expectedUpdatedAt).toISOString()) {
+    throw staleRecordError();
+  }
+};
 
 disciplineRouter.use('/api/employee-portal/discipline', requirePermissionForMethods(['POST', 'PATCH', 'DELETE'], portalPermissions.disciplineManage));
 
@@ -16,7 +25,9 @@ const categorySchema = z.object({
   active: z.boolean().optional().default(true),
 });
 
-const categoryUpdateSchema = categorySchema.partial();
+const categoryUpdateSchema = categorySchema.partial().extend({
+  expectedUpdatedAt: z.string().optional(),
+});
 
 const recordSchema = z.object({
   employeeId: z.string().min(1),
@@ -29,9 +40,9 @@ const recordSchema = z.object({
   status: z.enum(['draft', 'issued', 'acknowledged', 'hr-reviewed']).optional().default('draft'),
 });
 
-const recordUpdateSchema = recordSchema.partial();
-
-const actorFromRequest = (request: { user?: { email?: string } }) => request.user?.email ?? 'anonymous';
+const recordUpdateSchema = recordSchema.partial().extend({
+  expectedUpdatedAt: z.string().optional(),
+});
 
 const mapCategory = (category: {
   id: string;
@@ -96,13 +107,15 @@ disciplineRouter.post('/api/employee-portal/discipline/categories', requireAuth,
     }
     const category = await prisma.disciplineCategory.create({ data: parsed.data });
     const mapped = mapCategory(category);
-    await writeAuditLog({
+    await recordAuditEvent({
+      request: req,
       module: 'Discipline',
       action: 'discipline.category.created',
-      actor: actorFromRequest(req),
+      entityType: 'discipline_category',
       entityId: category.id,
+      entityLabel: category.name,
       summary: `Created discipline category ${category.name}.`,
-      afterPayload: mapped,
+      afterSnapshot: mapped,
     });
     res.status(201).json({ success: true, data: mapped });
   } catch (err) {
@@ -120,19 +133,23 @@ disciplineRouter.patch('/api/employee-portal/discipline/categories/:id', require
     if (!existing) {
       return next(Object.assign(new Error('Discipline category not found'), { status: 404, code: 'NOT_FOUND' }));
     }
+    const { expectedUpdatedAt, ...data } = parsed.data;
+    assertFreshRecord(expectedUpdatedAt, existing.updatedAt);
     const category = await prisma.disciplineCategory.update({
       where: { id: String(req.params.id) },
-      data: parsed.data,
+      data,
     });
     const mapped = mapCategory(category);
-    await writeAuditLog({
+    await recordAuditEvent({
+      request: req,
       module: 'Discipline',
       action: 'discipline.category.updated',
-      actor: actorFromRequest(req),
+      entityType: 'discipline_category',
       entityId: category.id,
+      entityLabel: category.name,
       summary: `Updated discipline category ${category.name}.`,
-      beforePayload: mapCategory(existing),
-      afterPayload: mapped,
+      beforeSnapshot: mapCategory(existing),
+      afterSnapshot: mapped,
     });
     res.json({ success: true, data: mapped });
   } catch (err) {
@@ -169,13 +186,24 @@ disciplineRouter.post('/api/employee-portal/discipline/records', requireAuth, as
       },
     });
     const mapped = mapRecord(record);
-    await writeAuditLog({
+    await syncAttachmentReference({
+      request: req,
+      module: 'Discipline',
+      entityType: 'discipline_record',
+      entityId: record.id,
+      referenceKey: 'discipline-attachment',
+      referenceUrl: record.attachmentReference,
+      description: `Attachment for discipline record ${record.id}.`,
+    });
+    await recordAuditEvent({
+      request: req,
       module: 'Discipline',
       action: 'discipline.record.created',
-      actor: actorFromRequest(req),
+      entityType: 'discipline_record',
       entityId: record.id,
+      entityLabel: record.summary.slice(0, 80),
       summary: `Created discipline record ${record.id}.`,
-      afterPayload: mapped,
+      afterSnapshot: mapped,
     });
     res.status(201).json({ success: true, data: mapped });
   } catch (err) {
@@ -194,6 +222,7 @@ disciplineRouter.patch('/api/employee-portal/discipline/records/:id', requireAut
       return next(Object.assign(new Error('Discipline record not found'), { status: 404, code: 'NOT_FOUND' }));
     }
     const nextStatus = parsed.data.status ?? existing.status;
+    assertFreshRecord(parsed.data.expectedUpdatedAt, existing.updatedAt);
     const record = await prisma.disciplineRecord.update({
       where: { id: String(req.params.id) },
       data: {
@@ -210,24 +239,37 @@ disciplineRouter.patch('/api/employee-portal/discipline/records/:id', requireAut
       },
     });
     const mapped = mapRecord(record);
-    await writeAuditLog({
+    await syncAttachmentReference({
+      request: req,
+      module: 'Discipline',
+      entityType: 'discipline_record',
+      entityId: record.id,
+      referenceKey: 'discipline-attachment',
+      referenceUrl: record.attachmentReference,
+      description: `Attachment for discipline record ${record.id}.`,
+    });
+    await recordAuditEvent({
+      request: req,
       module: 'Discipline',
       action: 'discipline.record.updated',
-      actor: actorFromRequest(req),
+      entityType: 'discipline_record',
       entityId: record.id,
+      entityLabel: record.summary.slice(0, 80),
       summary: `Updated discipline record ${record.id}.`,
-      beforePayload: mapRecord(existing),
-      afterPayload: mapped,
+      beforeSnapshot: mapRecord(existing),
+      afterSnapshot: mapped,
     });
     if (nextStatus === 'acknowledged' && existing.status !== 'acknowledged') {
-      await writeAuditLog({
+      await recordAuditEvent({
+        request: req,
         module: 'Discipline',
         action: 'discipline.acknowledged',
-        actor: actorFromRequest(req),
+        entityType: 'discipline_record',
         entityId: record.id,
+        entityLabel: record.summary.slice(0, 80),
         summary: `Acknowledged discipline record ${record.id}.`,
-        beforePayload: mapRecord(existing),
-        afterPayload: mapped,
+        beforeSnapshot: mapRecord(existing),
+        afterSnapshot: mapped,
       });
     }
     res.json({ success: true, data: mapped });

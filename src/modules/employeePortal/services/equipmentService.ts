@@ -109,7 +109,7 @@ export const equipmentService = {
     );
   },
 
-  async returnEquipment(id: string, damageStatus: DamageStatus, conditionNotes?: string): Promise<EquipmentAssignment> {
+  async returnEquipment(id: string, damageStatus: DamageStatus, conditionNotes?: string, expectedUpdatedAt?: string): Promise<EquipmentAssignment> {
     return callApi(() =>
       portalApiFetch<EquipmentAssignment>(`/equipment/assignments/${id}`, {
         method: 'PATCH',
@@ -117,6 +117,7 @@ export const equipmentService = {
           returnedOn: new Date().toISOString().slice(0, 10),
           damageStatus,
           conditionNotes,
+          expectedUpdatedAt,
         }),
       }),
     );

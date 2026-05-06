@@ -23,6 +23,7 @@ export interface PerformanceReviewItem {
   score: number;
   maxScore: number;
   notes?: string;
+  updatedAt?: string;
 }
 
 export interface PerformanceReview {

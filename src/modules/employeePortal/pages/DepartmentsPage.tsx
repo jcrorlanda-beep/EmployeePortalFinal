@@ -23,6 +23,8 @@ export function DepartmentsPage() {
   const [draft, setDraft] = useState<DepartmentDraft>(emptyDepartmentDraft);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [formError, setFormError] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [pendingDeactivateId, setPendingDeactivateId] = useState<string | null>(null);
 
   const employeeNameById = useMemo(
     () => new Map(employees.map((employee) => [employee.id, `${employee.firstName} ${employee.lastName}`])),
@@ -51,13 +53,20 @@ export function DepartmentsPage() {
   };
 
   const deactivateDepartment = async (department: Department) => {
-    await employeeService.deactivateDepartment(department.id, createAuditMetadata('mvp-admin', 'Phase 003 department deactivate'));
-    await refreshDepartments();
-    if (editingId === department.id) resetForm();
+    if (pendingDeactivateId) return;
+    setPendingDeactivateId(department.id);
+    try {
+      await employeeService.deactivateDepartment(department.id, createAuditMetadata('mvp-admin', 'Phase 003 department deactivate'));
+      await refreshDepartments();
+      if (editingId === department.id) resetForm();
+    } finally {
+      setPendingDeactivateId(null);
+    }
   };
 
   const submitDepartment = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (isSubmitting) return;
     const normalizedDraft: DepartmentDraft = {
       ...draft,
       code: draft.code.trim().toUpperCase(),
@@ -72,14 +81,19 @@ export function DepartmentsPage() {
       return;
     }
 
-    if (editingId) {
-      await employeeService.updateDepartment(editingId, normalizedDraft, createAuditMetadata('mvp-admin', 'Phase 003 department update'));
-    } else {
-      await employeeService.createDepartment(normalizedDraft, createAuditMetadata('mvp-admin', 'Phase 003 department create'));
-    }
+    setIsSubmitting(true);
+    try {
+      if (editingId) {
+        await employeeService.updateDepartment(editingId, normalizedDraft, createAuditMetadata('mvp-admin', 'Phase 003 department update'));
+      } else {
+        await employeeService.createDepartment(normalizedDraft, createAuditMetadata('mvp-admin', 'Phase 003 department create'));
+      }
 
-    await refreshDepartments();
-    resetForm();
+      await refreshDepartments();
+      resetForm();
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -104,7 +118,7 @@ export function DepartmentsPage() {
             <label>Status<select value={draft.status} onChange={(event) => setDraft({ ...draft, status: event.target.value as SetupStatus })}>{setupStatusOptions.map((status) => <option key={status} value={status}>{status}</option>)}</select></label>
             <label className="full-width">Description<textarea value={draft.description} onChange={(event) => setDraft({ ...draft, description: event.target.value })} /></label>
           </div>
-          <div className="button-row"><button className="primary" type="submit">{editingId ? 'Save department' : 'Add department'}</button><button className="secondary" type="button" onClick={resetForm}>Clear</button></div>
+          <div className="button-row"><button className="primary" disabled={isSubmitting} type="submit">{isSubmitting ? 'Saving…' : editingId ? 'Save department' : 'Add department'}</button><button className="secondary" disabled={isSubmitting} type="button" onClick={resetForm}>Clear</button></div>
         </form>
 
         <div className="cards single-column">
@@ -114,7 +128,7 @@ export function DepartmentsPage() {
               <p>{department.description || 'No description yet.'}</p>
               <p>Manager / lead: {department.managerEmployeeId ? employeeNameById.get(department.managerEmployeeId) ?? 'Unknown employee' : 'Unassigned'}</p>
               <p>Sort order: {department.sortOrder ?? 'Not set'}</p>
-              <div className="button-row"><button className="secondary" type="button" onClick={() => startEdit(department)}>Edit department</button><button className="secondary danger" type="button" disabled={department.status === 'inactive'} onClick={() => deactivateDepartment(department)}>Deactivate</button></div>
+              <div className="button-row"><button className="secondary" disabled={isSubmitting || pendingDeactivateId === department.id} type="button" onClick={() => startEdit(department)}>Edit department</button><button className="secondary danger" type="button" disabled={department.status === 'inactive' || Boolean(pendingDeactivateId)} onClick={() => deactivateDepartment(department)}>{pendingDeactivateId === department.id ? 'Deactivating…' : 'Deactivate'}</button></div>
             </article>
           ))}
         </div>

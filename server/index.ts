@@ -1,10 +1,13 @@
 import express from 'express';
+import { attachmentRouter } from './routes/attachmentRouter';
 import { auditRouter } from './routes/auditRouter';
 import { reviewRouter } from './routes/reviewRouter';
 import { corsMiddleware } from './middleware/cors';
 import { errorHandler } from './middleware/errorHandler';
+import { createRateLimitMiddleware } from './middleware/rateLimit';
 import { requestLogger } from './middleware/requestLogger';
-import { getPort } from './utils/env';
+import { securityHeaders } from './middleware/securityHeaders';
+import { assertRuntimeEnvironment, getNodeEnv, getPort, logStartupWarnings } from './utils/env';
 import { apiRootRouter } from './routes';
 import { authRouter } from './routes/authRouter';
 import { benefitsRouter } from './routes/benefitsRouter';
@@ -26,13 +29,20 @@ import { trainingRouter } from './routes/trainingRouter';
 
 const app = express();
 
-app.use(express.json());
+app.use(express.json({ limit: '1mb' }));
+app.use(securityHeaders);
 app.use(corsMiddleware);
 app.use(requestLogger);
+app.use('/api/employee-portal', createRateLimitMiddleware({
+  keyPrefix: 'portal-api',
+  limit: 240,
+  windowMs: 60_000,
+}));
 
 app.use(apiRootRouter);
 app.use(healthRouter);
 app.use(authRouter);
+app.use(attachmentRouter);
 app.use(auditRouter);
 app.use(employeeRouter);
 app.use(departmentRouter);
@@ -53,8 +63,11 @@ app.use(reviewRouter);
 
 app.use(errorHandler);
 
+assertRuntimeEnvironment();
+logStartupWarnings();
+
 const port = getPort();
 
 app.listen(port, () => {
-  console.log(`NCCC Employee Portal API listening on ${port}`);
+  console.log(`NCCC Employee Portal API listening on ${port} (${getNodeEnv()})`);
 });

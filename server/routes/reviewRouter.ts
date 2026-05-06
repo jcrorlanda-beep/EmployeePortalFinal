@@ -3,10 +3,18 @@ import { z } from 'zod';
 import { prisma } from '../prisma/client';
 import { requireAuth } from '../middleware/auth';
 import { requirePermissionForMethods } from '../middleware/permissions';
-import { writeAuditLog } from '../services/auditService';
+import { recordAuditEvent } from '../services/auditPersistenceService';
 import { portalPermissions } from '../types/permissions';
 
 export const reviewRouter = Router();
+
+const staleRecordMessage = 'Record was updated by another user. Please refresh and try again.';
+const staleRecordError = () => Object.assign(new Error(staleRecordMessage), { status: 409, code: 'STALE_RECORD' });
+const assertFreshRecord = (expectedUpdatedAt: string | undefined, actualUpdatedAt: Date) => {
+  if (expectedUpdatedAt && actualUpdatedAt.toISOString() !== new Date(expectedUpdatedAt).toISOString()) {
+    throw staleRecordError();
+  }
+};
 
 reviewRouter.use(
   '/api/employee-portal/reviews',
@@ -24,7 +32,9 @@ const templateSchema = z.object({
   active: z.boolean().optional().default(true),
 });
 
-const templateUpdateSchema = templateSchema.partial();
+const templateUpdateSchema = templateSchema.partial().extend({
+  expectedUpdatedAt: z.string().optional(),
+});
 
 const reviewSchema = z.object({
   employeeId: z.string().min(1),
@@ -36,17 +46,17 @@ const reviewSchema = z.object({
 const reviewUpdateSchema = z.object({
   status: z.enum(['draft', 'submitted', 'employee-acknowledged', 'hr-approved']).optional(),
   supervisorNotes: z.string().optional(),
+  expectedUpdatedAt: z.string().optional(),
 });
 
 const reviewItemSchema = z.object({
   score: z.number().nonnegative(),
   notes: z.string().optional(),
+  expectedUpdatedAt: z.string().optional(),
 });
 
 const decimalToNumber = (value: { toNumber?: () => number } | number | null | undefined) =>
   typeof value === 'number' ? value : value?.toNumber?.() ?? 0;
-const actorFromRequest = (request: { user?: { email?: string } }) => request.user?.email ?? 'anonymous';
-
 const mapTemplate = (template: {
   id: string;
   name: string;
@@ -100,6 +110,7 @@ const mapReview = (
     score: decimalToNumber(item.score),
     maxScore: decimalToNumber(item.maxScore),
     notes: item.notes ?? undefined,
+    updatedAt: 'updatedAt' in item && item.updatedAt instanceof Date ? item.updatedAt.toISOString() : undefined,
   })),
   employeeAcknowledgedAt: review.employeeAcknowledgedAt?.toISOString(),
   hrApprovedAt: review.hrApprovedAt?.toISOString(),
@@ -124,13 +135,15 @@ reviewRouter.post('/api/employee-portal/reviews/templates', async (request, resp
     }
     const template = await prisma.performanceReviewTemplate.create({ data: parsed.data });
     const mapped = mapTemplate(template);
-    await writeAuditLog({
+    await recordAuditEvent({
+      request,
       module: 'PerformanceReview',
       action: 'review.template.created',
-      actor: actorFromRequest(request),
+      entityType: 'review_template',
       entityId: template.id,
+      entityLabel: template.name,
       summary: `Created review template ${template.name}.`,
-      afterPayload: mapped,
+      afterSnapshot: mapped,
     });
     response.status(201).json({ success: true, data: mapped });
   } catch (error) {
@@ -148,19 +161,23 @@ reviewRouter.patch('/api/employee-portal/reviews/templates/:id', async (request,
     if (!existing) {
       return next(Object.assign(new Error('Review template not found'), { status: 404, code: 'NOT_FOUND' }));
     }
+    const { expectedUpdatedAt, ...data } = parsed.data;
+    assertFreshRecord(expectedUpdatedAt, existing.updatedAt);
     const template = await prisma.performanceReviewTemplate.update({
       where: { id: String(request.params.id) },
-      data: parsed.data,
+      data,
     });
     const mapped = mapTemplate(template);
-    await writeAuditLog({
+    await recordAuditEvent({
+      request,
       module: 'PerformanceReview',
       action: 'review.template.updated',
-      actor: actorFromRequest(request),
+      entityType: 'review_template',
       entityId: template.id,
+      entityLabel: template.name,
       summary: `Updated review template ${template.name}.`,
-      beforePayload: mapTemplate(existing),
-      afterPayload: mapped,
+      beforeSnapshot: mapTemplate(existing),
+      afterSnapshot: mapped,
     });
     response.json({ success: true, data: mapped });
   } catch (error) {
@@ -175,9 +192,15 @@ reviewRouter.get('/api/employee-portal/reviews', requireAuth, async (_request, r
     const items = reviewIds.length
       ? await prisma.performanceReviewItem.findMany({ where: { reviewId: { in: reviewIds } }, orderBy: { createdAt: 'asc' } })
       : [];
+    const itemsByReviewId = new Map<string, typeof items>();
+    items.forEach((item) => {
+      const current = itemsByReviewId.get(item.reviewId) ?? [];
+      current.push(item);
+      itemsByReviewId.set(item.reviewId, current);
+    });
     response.json({
       success: true,
-      data: reviews.map((review) => mapReview(review, items.filter((item) => item.reviewId === review.id))),
+      data: reviews.map((review) => mapReview(review, itemsByReviewId.get(review.id) ?? [])),
     });
   } catch (error) {
     next(error);
@@ -219,13 +242,15 @@ reviewRouter.post('/api/employee-portal/reviews', async (request, response, next
       ),
     );
     const mapped = mapReview(review, items);
-    await writeAuditLog({
+    await recordAuditEvent({
+      request,
       module: 'PerformanceReview',
       action: 'review.created',
-      actor: actorFromRequest(request),
+      entityType: 'review',
       entityId: review.id,
+      entityLabel: review.reviewMonth,
       summary: `Created performance review ${review.id}.`,
-      afterPayload: mapped,
+      afterSnapshot: mapped,
     });
     response.status(201).json({ success: true, data: mapped });
   } catch (error) {
@@ -239,6 +264,11 @@ reviewRouter.patch('/api/employee-portal/reviews/:id/items/:itemId', async (requ
     if (!parsed.success) {
       return next(Object.assign(new Error('Validation failed'), { status: 400, code: 'VALIDATION_ERROR' }));
     }
+    const existingItem = await prisma.performanceReviewItem.findUnique({ where: { id: String(request.params.itemId) } });
+    if (!existingItem) {
+      return next(Object.assign(new Error('Review item not found'), { status: 404, code: 'NOT_FOUND' }));
+    }
+    assertFreshRecord(parsed.data.expectedUpdatedAt, existingItem.updatedAt);
     const item = await prisma.performanceReviewItem.update({
       where: { id: String(request.params.itemId) },
       data: {
@@ -268,6 +298,7 @@ reviewRouter.patch('/api/employee-portal/reviews/:id', async (request, response,
       return next(Object.assign(new Error('Review not found'), { status: 404, code: 'NOT_FOUND' }));
     }
     const nextStatus = parsed.data.status ?? existing.status;
+    assertFreshRecord(parsed.data.expectedUpdatedAt, existing.updatedAt);
     const review = await prisma.performanceReview.update({
       where: { id: String(request.params.id) },
       data: {
@@ -286,14 +317,16 @@ reviewRouter.patch('/api/employee-portal/reviews/:id', async (request, response,
         : nextStatus === 'hr-approved'
           ? 'review.approved'
           : 'review.updated';
-    await writeAuditLog({
+    await recordAuditEvent({
+      request,
       module: 'PerformanceReview',
       action,
-      actor: actorFromRequest(request),
+      entityType: 'review',
       entityId: review.id,
+      entityLabel: review.reviewMonth,
       summary: `Updated performance review ${review.id} to ${nextStatus}.`,
-      beforePayload: mapReview(existing, items),
-      afterPayload: mapped,
+      beforeSnapshot: mapReview(existing, items),
+      afterSnapshot: mapped,
     });
     response.json({ success: true, data: mapped });
   } catch (error) {

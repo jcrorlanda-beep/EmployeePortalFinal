@@ -3,6 +3,7 @@ import type { FormEvent } from 'react';
 import { EmployeePortalStatusBadge } from '../components/EmployeePortalStatusBadge';
 import { EmptyStateCard } from '../components/EmptyStateCard';
 import { employeeService } from '../services/employeeService';
+import { isStaleRecordError } from '../services/employeePortalApi';
 import { getSchedulingServiceStatus, schedulingService } from '../services/schedulingService';
 import type { Employee } from '../types/employeeTypes';
 import type { PtoRequest, PtoStatus, PtoType } from '../types/scheduleTypes';
@@ -26,6 +27,8 @@ export function LeaveRequestsPage() {
   const [formError, setFormError] = useState('');
   const [loadError, setLoadError] = useState('');
   const [isLoading, setIsLoading] = useState(true);
+  const [isSubmittingRequest, setIsSubmittingRequest] = useState(false);
+  const [pendingStatusId, setPendingStatusId] = useState<string | null>(null);
 
   const refresh = async () => {
     setRequests(await schedulingService.listPtoRequests());
@@ -52,6 +55,7 @@ export function LeaveRequestsPage() {
 
   const submitRequest = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (isSubmittingRequest) return;
     if (!empId || !startsOn || !endsOn || !reason.trim()) {
       setFormError('Employee, dates, and reason are required.');
       return;
@@ -61,6 +65,7 @@ export function LeaveRequestsPage() {
       return;
     }
     setFormError('');
+    setIsSubmittingRequest(true);
     try {
       await schedulingService.createPtoRequest(empId, ptoType, startsOn, endsOn, reason.trim(), halfDay);
       await refresh();
@@ -68,15 +73,27 @@ export function LeaveRequestsPage() {
       setHalfDay(false);
     } catch (error) {
       setFormError(error instanceof Error ? error.message : 'Unable to submit leave request.');
+      if (isStaleRecordError(error)) {
+        await refresh();
+      }
+    } finally {
+      setIsSubmittingRequest(false);
     }
   };
 
-  const updateStatus = async (id: string, status: PtoStatus) => {
+  const updateStatus = async (request: PtoRequest, status: PtoStatus) => {
+    if (pendingStatusId) return;
+    setPendingStatusId(request.id);
     try {
-      await schedulingService.updatePtoStatus(id, status);
+      await schedulingService.updatePtoStatus(request.id, status, undefined, request.updatedAt);
       await refresh();
     } catch (error) {
       setFormError(error instanceof Error ? error.message : 'Unable to update leave request.');
+      if (isStaleRecordError(error)) {
+        await refresh();
+      }
+    } finally {
+      setPendingStatusId(null);
     }
   };
 
@@ -124,7 +141,7 @@ export function LeaveRequestsPage() {
             </label>
           </div>
           <div className="button-row">
-            <button className="primary" type="submit">Submit request</button>
+            <button className="primary" disabled={isSubmittingRequest} type="submit">{isSubmittingRequest ? 'Submitting…' : 'Submit request'}</button>
           </div>
         </form>
 
@@ -140,8 +157,8 @@ export function LeaveRequestsPage() {
               {req.reviewedBy && <p>Reviewed by {req.reviewedBy}{req.reviewedAt ? ` at ${new Date(req.reviewedAt).toLocaleString()}` : ''}</p>}
               {req.status === 'pending' && (
                 <div className="button-row">
-                  <button className="primary" type="button" onClick={() => updateStatus(req.id, 'approved')}>Approve</button>
-                  <button className="secondary" type="button" onClick={() => updateStatus(req.id, 'rejected')}>Reject</button>
+                  <button className="primary" disabled={pendingStatusId === req.id} type="button" onClick={() => updateStatus(req, 'approved')}>{pendingStatusId === req.id ? 'Updating…' : 'Approve'}</button>
+                  <button className="secondary" disabled={pendingStatusId === req.id} type="button" onClick={() => updateStatus(req, 'rejected')}>Reject</button>
                 </div>
               )}
             </article>

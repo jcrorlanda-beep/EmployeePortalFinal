@@ -1,12 +1,15 @@
 import type { NextFunction, Request, Response } from 'express';
-import { getCorsOrigin } from '../utils/env';
+import { getCorsOrigins } from '../utils/env';
 
 export const corsMiddleware = (request: Request, response: Response, next: NextFunction) => {
-  const allowedOrigin = getCorsOrigin();
+  const allowedOrigins = getCorsOrigins();
   const requestOrigin = request.headers.origin;
+  const allowAnyOrigin = allowedOrigins.includes('*');
+  const originAllowed = allowAnyOrigin || (requestOrigin ? allowedOrigins.includes(requestOrigin) : false);
 
-  if (allowedOrigin === '*' || (requestOrigin && allowedOrigin.split(',').map((value) => value.trim()).includes(requestOrigin))) {
-    response.header('Access-Control-Allow-Origin', requestOrigin ?? '*');
+  if (originAllowed) {
+    response.header('Access-Control-Allow-Origin', allowAnyOrigin ? (requestOrigin ?? '*') : String(requestOrigin));
+    response.header('Vary', 'Origin');
   }
 
   response.header('Access-Control-Allow-Headers', 'Authorization, Content-Type');

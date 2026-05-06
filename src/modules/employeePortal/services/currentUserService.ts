@@ -1,5 +1,5 @@
-import type { PortalCurrentUser } from '../types/authTypes';
-import { getPortalSessionToken, portalApiFetch } from './employeePortalApi';
+import type { PortalCurrentUser, PortalLoginCredentials, PortalLoginResponse } from '../types/authTypes';
+import { getPortalSessionToken, PortalApiError, portalApiFetch } from './employeePortalApi';
 
 export const portalTokenStorageKey = 'ncccEmployeePortalToken';
 
@@ -15,7 +15,30 @@ export const clearPortalToken = () => {
   window.sessionStorage.removeItem(portalTokenStorageKey);
 };
 
-export const fetchCurrentPortalUser = async () => {
+export const loginPortalUser = async ({ email, password }: PortalLoginCredentials) => {
+  const result = await portalApiFetch<PortalLoginResponse>('/auth/login', {
+    method: 'POST',
+    body: JSON.stringify({ email, password }),
+  });
+  storePortalToken(result.token);
+  return result;
+};
+
+export const logoutPortalUser = async () => {
+  try {
+    await portalApiFetch<{ loggedOut: boolean }>('/auth/logout', {
+      method: 'POST',
+    });
+  } catch (error) {
+    if (!(error instanceof PortalApiError)) {
+      throw error;
+    }
+  } finally {
+    clearPortalToken();
+  }
+};
+
+export const fetchCurrentPortalUser = async (): Promise<PortalCurrentUser | null> => {
   const token = readPortalToken();
   if (!token) return null;
 

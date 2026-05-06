@@ -55,6 +55,19 @@ The NCCC Employee Portal is a standalone HR and workforce management MVP for Nor
 | 057 | Live API wiring: tool deposits + canteen debt | Complete with standalone backend persistence, live balance updates, refund/forfeit actions, and payroll-deduction-ready references only |
 | 058 | Live API wiring: equipment + inventory | Complete with standalone backend persistence, assignment/return workflows, stock movement updates, and reference URL fields only |
 | 059 | Live API wiring: discipline + monthly reviews | Complete with standalone backend persistence, acknowledgement/HR approval fields, and review item score tracking |
+| 060 | Persistent audit expansion | Complete with persistent audit metadata projection, filters/pagination, and expanded snapshot detail support |
+| 061 | Standalone frontend auth screens | Complete with standalone login UX, protected portal wrapper, logout flow, and explicit session/backend states |
+| 062 | Frontend RBAC enforcement | Complete with permission helper hooks, guarded dashboard access, and admin-only role-permission controls |
+| 063 | API error UX stabilization | Complete with safer shared API messaging, retry affordances, and clearer auth/backend failure states |
+| 064 | Pagination + search + filtering | Complete with scalable list controls across employees, SOPs, audit logs, equipment, inventory, discipline, canteen transactions, and monthly reviews |
+| 065 | Database performance pass | Complete with additive Prisma indexes and light query cleanup for live review aggregation |
+| 066 | Mobile responsiveness pass | Complete with mobile/tablet layout tuning for forms, tables, navigation, cards, and action flows |
+| 067 | Dashboard analytics pass | Complete with live summary metrics for workforce, attendance, leave, swaps, inventory, canteen balances, and reviews |
+| 068 | Environment hardening | Complete with startup env validation, secret-safe warnings, and stricter CORS parsing |
+| 069 | Seed + demo data improvements | Complete with realistic baseline departments, roles, employees, schedules, and templates behind an env toggle |
+| 070 | Deployment automation prep | Complete with production-oriented scripts and expanded standalone deployment guidance |
+| 071 | API security pass | Complete with lightweight rate limiting, tighter JWT checks, safer headers, and generic 500 responses |
+| 072 | Formula safety hardening | Complete with stricter parser guards, variable validation, and expression complexity limits |
 
 ## Safety Decisions
 
@@ -84,6 +97,19 @@ The NCCC Employee Portal is a standalone HR and workforce management MVP for Nor
 - Phase 057 wired tool deposits, canteen transactions, and employee debt ledgers to the standalone backend API with live balance recalculation and no final payroll deduction posting.
 - Phase 058 wired equipment registry, equipment assignments/returns, inventory items, and stock movements to the standalone backend API with reference URL support only.
 - Phase 059 wired discipline categories/records and monthly review templates/reviews to the standalone backend API with acknowledgement and approval workflow persistence.
+- Phase 060 expanded persistent audit logs with richer actor/entity metadata projection, filters, pagination, and snapshot detail support without activating any TalyerOS integration.
+- Phase 061 added standalone frontend login/session UX with a protected portal wrapper, logout flow, unauthorized state, and explicit backend-unavailable handling without any TalyerOS auth integration.
+- Phase 062 added frontend RBAC helpers, permission-aware dashboard cards, route/session context plumbing, and admin-only role-permission controls without any TalyerOS integration.
+- Phase 063 improved the shared frontend API error layer with safer auth/backend/validation messages and explicit retry affordances for standalone portal users.
+- Phase 064 added scalable browsing controls including pagination, search, filters, and sort options across the targeted employee-portal record lists.
+- Phase 065 added additive Prisma indexes on commonly filtered and sorted fields plus a light review-query aggregation cleanup, without running destructive migrations.
+- Phase 066 improved small-screen ergonomics across portal navigation, auth, forms, tables, cards, and approval/action controls without changing standalone business logic.
+- Phase 067 upgraded the dashboard from a static module launcher into a live operational summary surface backed by the current portal service layer.
+- Phase 068 hardened runtime configuration with environment validation, startup warnings, and safer CORS handling without logging secrets.
+- Phase 069 upgraded the seed/bootstrap flow with realistic baseline demo records while keeping admin credentials env-driven only.
+- Phase 070 expanded deployment prep with production-oriented scripts, Prisma deploy steps, generic backend hosting notes, and frontend hosting guidance.
+- Phase 071 hardened the standalone API with lightweight rate limiting, tighter auth token validation, request-size limits, and safer server responses.
+- Phase 072 tightened formula preview safety with stronger input validation, parser complexity limits, and stricter variable normalization.
 - Database schema contains all requested model names.
 - TalyerOS integration remains inactive.
 - Build command: `npm run build`.
@@ -225,3 +251,121 @@ The NCCC Employee Portal is a standalone HR and workforce management MVP for Nor
 - Monthly review item weights and max scores are now persisted instead of being held only in frontend session state.
 - Discipline and review pages now surface loading, backend-unavailable, and API error states instead of silently persisting to mock or session state.
 - Remaining mock/session-first modules after Phase 059 include internal communication, dashboard analytics, and payslips.
+
+## Phase 060 Notes
+
+- Audit logs remain persistent and now project richer actor and entity metadata through a shared backend audit helper and API mapping layer.
+- The audit API now supports filters for module, action, entity type, entity ID, actor user ID, and date range, plus page and page-size pagination with newest-first sorting.
+- The Audit Logs page now shows loading, backend-unavailable, and error states, along with filters, paginated results, and a detail panel for before/after snapshots and metadata where available.
+- Before/after snapshots are supported where routes already provide them, while older generic audit middleware records continue to render safely through the expanded projection layer.
+- No TalyerOS integration, auth coupling, payroll finalization logic, or hardcoded PH rates were added in this phase.
+
+## Phase 061 Notes
+
+- The Employee Portal now opens with a standalone sign-in screen instead of rendering anonymous users directly into the shell.
+- Frontend session UX now supports login, logout, current-user display, expired-session messaging, unauthorized-state handling, and backend-unavailable messaging without any TalyerOS auth dependency.
+- Authenticated users keep their existing module navigation, while users with no permitted modules now see a clear access-limited state instead of an ambiguous empty shell.
+- This phase did not add payroll finalization logic, hardcoded PH statutory rates, destructive migrations, or TalyerOS integration.
+
+## Phase 062 Notes
+
+- Frontend RBAC now uses a shared session context plus a dedicated permission helper hook instead of duplicating ad hoc role checks in pages.
+- Dashboard module cards now respect standalone portal permissions and show disabled explanations when the signed-in user lacks access.
+- Role and permission editing controls in the Positions page are now admin-only in the frontend, while the rest of the module remains visible to authorized non-admin operators.
+- This phase did not add TalyerOS auth/workflow integration, payroll finalization logic, hardcoded PH statutory rates, or Prisma migrations.
+
+## Phase 063 Notes
+
+- Shared frontend API error handling now normalizes backend-unavailable, invalid-credential, expired-session, unauthorized, and validation-style responses into clearer standalone portal messages.
+- The standalone login screen and Audit Logs page now expose explicit retry actions instead of leaving users at a dead-end error state.
+- Existing live API pages benefit from the safer centralized error wording without changing their core CRUD behavior.
+- This phase did not add TalyerOS integration, payroll finalization logic, hardcoded PH statutory rates, or Prisma migrations.
+
+## Phase 064 Notes
+
+- Employees, SOP documents, equipment items, inventory items, discipline records, canteen transactions, and monthly reviews now support client-side search, filter, sort, and pagination controls for more scalable browsing.
+- Audit logs keep their server-side filter and pagination behavior from Phase 060, and now add quick-search and sort controls over the loaded result set for faster triage.
+- This phase stayed frontend-focused and did not change TalyerOS integration status, payroll finalization behavior, hardcoded PH statutory rates, or Prisma schema state.
+
+## Phase 065 Notes
+
+- Prisma schema performance tuning now includes additive indexes on the fields most frequently used by live routes for filtering, sorting, and per-employee lookups.
+- Review list aggregation now groups fetched review items in memory once instead of repeatedly filtering the full item array for every review row.
+- No destructive migration was run in this phase. These index changes still require a reviewed additive migration before production deployment.
+
+## Phase 066 Notes
+
+- Mobile and tablet responsiveness now better supports dense forms, table-based modules, navigation, dashboard cards, and approval-heavy workflows through tighter spacing and stacked action layouts.
+- Table containers now scroll safely on narrow screens instead of forcing layout breakage, while key buttons expand to full width for easier touch interaction.
+- This phase did not change TalyerOS integration status, payroll finalization behavior, hardcoded PH statutory rates, or Prisma schema state.
+
+## Phase 067 Notes
+
+- The dashboard now surfaces live summary metrics for employees, onboarding, training, attendance, timesheets, PTO, swaps, inventory alerts, canteen balances, and pending reviews.
+- Recent discipline records now appear directly on the dashboard so supervisors and HR leads can spot issues without drilling into the write-up module first.
+- Dashboard metric cards now route directly into the related modules, while preserving the standalone RBAC-aware module access behavior from Phase 062.
+
+## Phase 068 Notes
+
+- Backend startup now validates production-critical environment variables and emits clear warnings when local or staging configuration is incomplete.
+- CORS handling now parses configured origin lists explicitly and avoids permissive wildcard behavior in production unless the environment is deliberately configured that way.
+- Startup logs remain secret-safe: configuration warnings name missing or risky keys without printing secret values.
+
+## Phase 069 Notes
+
+- Seed/bootstrap now creates a more useful standalone demo baseline including departments, positions, roles, employees, schedule templates, schedule instances, onboarding template steps, and a default review template.
+- Demo record seeding is controlled by `SEED_DEMO_DATA`, while admin bootstrap credentials remain env-driven through `ADMIN_EMAIL`, `ADMIN_PASSWORD`, and `ADMIN_ROLE`.
+- No real passwords, hardcoded secrets, destructive resets, or TalyerOS integration were added in this phase.
+
+## Phase 070 Notes
+
+- Production-oriented package scripts now cover frontend-only builds, type-check builds, backend production startup, and a combined deploy check.
+- Deployment documentation now includes explicit Prisma deploy sequencing, backend hosting notes for Railway/Render-style platforms, frontend hosting notes for Vercel/static deployment, and health-check guidance.
+- This phase did not introduce host-specific lock-in, TalyerOS integration, hardcoded PH statutory rates, or payroll finalization logic.
+
+## Phase 071 Notes
+
+- The standalone API now uses lightweight in-memory rate limiting for both the overall `/api/employee-portal` surface and the auth login route.
+- JWT verification now restricts allowed algorithms and rejects malformed token payloads earlier, while request parsing now uses an explicit JSON body-size limit.
+- Server responses now keep 500-level errors generic, and baseline security headers are set without changing TalyerOS integration status or payroll behavior.
+
+## Phase 072 Notes
+
+- Formula create, update, and preview requests now enforce uppercase formula-code and variable-name rules, unique variable lists, finite preview values, and tighter size limits.
+- The preview evaluator now rejects overlong expressions, excessive token counts, and deeply nested expressions before evaluation proceeds.
+- Formula preview remains preview-only, with no `eval()`, no arbitrary execution path, and no payroll posting or finalization behavior.
+
+## Phase 073 Notes
+
+- Optimistic concurrency safeguards now protect the highest-risk live write routes first: employee setup APIs, scheduling/PTO/swaps, equipment/returns, inventory item updates, discipline status changes, and monthly review scoring/status changes.
+- Backend update and approval routes now accept `expectedUpdatedAt` where practical and return `409 STALE_RECORD` with a clear refresh-and-retry message instead of silently overwriting newer changes.
+- Frontend pages for the priority flows now guard against duplicate submits while requests are pending, and they refetch after successful mutations and stale-record conflicts.
+- The older session-scoped Employees, Departments, and Positions pages also now block duplicate submits, while their matching backend routes are prepared for optimistic concurrency when those records are fully live-wired.
+- No TalyerOS integration, hardcoded PH statutory rates, payroll finalization logic, or destructive Prisma migration was added in this phase.
+
+## Phase 074 Notes
+
+- A standalone attachment metadata layer now exists for upload-ready records without introducing file storage, object storage, or committed real file URLs.
+- The backend now supports attachment metadata records with module/entity linkage, upload attribution, file naming and mime metadata, reference URLs, notes, and `Active`/`Archived` status.
+- Existing live reference fields now sync into attachment metadata records for SOP documents, equipment photos, serial number photos, damage photos, assignment proof photos, discipline attachments, and inventory reference photos.
+- Attachment metadata routes now support listing, creating, updating, and archiving metadata records, with attachment audit events for create, update, and archive actions.
+- No TalyerOS integration, payroll finalization logic, hardcoded PH statutory rates, or destructive Prisma migration was added in this phase.
+
+## Phase 075 Notes
+
+- The manual QA checklist now covers standalone auth, RBAC, all live-wired business modules, attachment metadata, mobile layout, and deployment-environment checks.
+- The checklist explicitly calls out concurrency conflict handling, preview-only payroll rules, configurable-only government contribution setup, and the no-TalyerOS requirement.
+- This phase is documentation-focused and does not add new runtime behavior, destructive migrations, payroll finalization logic, or hardcoded PH statutory rates.
+
+## Phase 076 Notes
+
+- Low-risk cleanup and stabilization work now aligns older SOP page submit/archive/acknowledgement behavior with the newer live API pages by adding pending-state guards and clearer save errors.
+- Release documentation and QA notes now reflect the attachment metadata layer and the current standalone release boundary more consistently.
+- This phase did not add new major features, TalyerOS integration, payroll finalization behavior, hardcoded PH statutory rates, or destructive Prisma migration steps.
+
+## Phase 077 Notes
+
+- Production-ready confirmation artifacts are now documented in `docs/NCCC_EMPLOYEE_PORTAL_PRODUCTION_READY.md`.
+- Final release checks reconfirmed that frontend build and Prisma schema validation pass, and that the backend boots and serves health endpoints when runtime configuration is present.
+- This workspace did not have a real standalone `.env` or seeded admin credentials loaded, so full auth and database-backed module smoke tests remain an environment-backed release step rather than a claim made without evidence.
+- No TalyerOS integration, destructive migration, payroll finalization logic, or hardcoded PH statutory rates were introduced during release confirmation.

@@ -5,17 +5,22 @@ import { canAccessModule } from '../utils/portalAccess';
 
 export function useEmployeePortal() {
   const [activeModule, setActiveModule] = useState<EmployeePortalModuleKey>('dashboard');
-  const { currentUser, authError, authState } = useCurrentPortalUser();
+  const { currentUser, authError, authState, dismissAuthError, login, logout, refreshSession } = useCurrentPortalUser();
 
   const availableModules = useMemo(
     () => authState === 'authenticated'
       ? employeePortalModules.filter((module) => canAccessModule(currentUser?.role, module.key))
-      : employeePortalModules,
+      : [],
     [authState, currentUser?.role],
   );
 
+  const effectiveAuthState = useMemo(
+    () => authState === 'authenticated' && availableModules.length === 0 ? 'unauthorized' : authState,
+    [authState, availableModules.length],
+  );
+
   useEffect(() => {
-    if (!availableModules.some((module) => module.key === activeModule)) {
+    if (availableModules.length > 0 && !availableModules.some((module) => module.key === activeModule)) {
       setActiveModule(availableModules[0]?.key ?? 'dashboard');
     }
   }, [activeModule, availableModules]);
@@ -25,5 +30,17 @@ export function useEmployeePortal() {
     [activeModule, availableModules],
   );
 
-  return { activeModule, activeDefinition, availableModules, currentUser, authError, authState, setActiveModule };
+  return {
+    activeModule,
+    activeDefinition,
+    availableModules,
+    currentUser,
+    authError,
+    authState: effectiveAuthState,
+    dismissAuthError,
+    login,
+    logout,
+    refreshSession,
+    setActiveModule,
+  };
 }

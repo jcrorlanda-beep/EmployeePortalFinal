@@ -1,9 +1,8 @@
 import { Router } from 'express';
-import { prisma } from '../prisma/client';
 import { requireAuth } from '../middleware/auth';
 import { requirePermission } from '../middleware/permissions';
+import { listExpandedAuditLogs } from '../services/auditPersistenceService';
 import { portalPermissions } from '../types/permissions';
-import { ok } from '../utils/response';
 
 export const auditRouter = Router();
 
@@ -13,26 +12,19 @@ auditRouter.get(
   requirePermission(portalPermissions.auditView),
   async (request, response, next) => {
     try {
-      const module = typeof request.query.module === 'string' ? request.query.module : undefined;
-      const action = typeof request.query.action === 'string' ? request.query.action : undefined;
-      const employee = typeof request.query.employee === 'string' ? request.query.employee : undefined;
-      const dateFrom = typeof request.query.dateFrom === 'string' ? request.query.dateFrom : undefined;
-      const dateTo = typeof request.query.dateTo === 'string' ? request.query.dateTo : undefined;
-
-      const logs = await prisma.auditLogEntry.findMany({
-        where: {
-          module,
-          action,
-          entityId: employee,
-          createdAt: dateFrom || dateTo ? {
-            gte: dateFrom ? new Date(dateFrom) : undefined,
-            lte: dateTo ? new Date(dateTo) : undefined,
-          } : undefined,
-        },
-        orderBy: { createdAt: 'desc' },
+      const result = await listExpandedAuditLogs({
+        module: typeof request.query.module === 'string' ? request.query.module : undefined,
+        action: typeof request.query.action === 'string' ? request.query.action : undefined,
+        entityType: typeof request.query.entityType === 'string' ? request.query.entityType : undefined,
+        entityId: typeof request.query.entityId === 'string' ? request.query.entityId : undefined,
+        actorUserId: typeof request.query.actorUserId === 'string' ? request.query.actorUserId : undefined,
+        dateFrom: typeof request.query.dateFrom === 'string' ? request.query.dateFrom : undefined,
+        dateTo: typeof request.query.dateTo === 'string' ? request.query.dateTo : undefined,
+        page: typeof request.query.page === 'string' ? Number(request.query.page) : undefined,
+        pageSize: typeof request.query.pageSize === 'string' ? Number(request.query.pageSize) : undefined,
       });
 
-      ok(response, logs);
+      response.json({ success: true, data: result });
     } catch (error) {
       next(error);
     }

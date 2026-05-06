@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { FormEvent } from 'react';
 import { EmployeePortalStatusBadge } from '../components/EmployeePortalStatusBadge';
 import { EmptyStateCard } from '../components/EmptyStateCard';
@@ -8,6 +8,7 @@ import type { InventoryItem, InventoryMovement, MovementType } from '../types/in
 const movementTypeOptions: MovementType[] = ['in', 'out', 'adjustment'];
 
 export function InventoryPage() {
+  const pageSize = 6;
   const [items, setItems] = useState<InventoryItem[]>([]);
   const [movements, setMovements] = useState<InventoryMovement[]>([]);
   const [sku, setSku] = useState('');
@@ -20,10 +21,16 @@ export function InventoryPage() {
   const [movType, setMovType] = useState<MovementType>('in');
   const [movQty, setMovQty] = useState(1);
   const [movReason, setMovReason] = useState('');
+  const [query, setQuery] = useState('');
+  const [stockFilter, setStockFilter] = useState<'all' | 'low' | 'healthy'>('all');
+  const [sortBy, setSortBy] = useState<'name-asc' | 'qty-asc' | 'qty-desc'>('name-asc');
+  const [page, setPage] = useState(1);
   const [itemError, setItemError] = useState('');
   const [movError, setMovError] = useState('');
   const [loadError, setLoadError] = useState('');
   const [isLoading, setIsLoading] = useState(true);
+  const [isSubmittingItem, setIsSubmittingItem] = useState(false);
+  const [isSubmittingMovement, setIsSubmittingMovement] = useState(false);
 
   const refresh = async () => {
     const [iList, mList] = await Promise.all([inventoryService.listItems(), inventoryService.listMovements()]);
@@ -31,6 +38,27 @@ export function InventoryPage() {
     setMovements(mList);
     setMovItemId((cur) => cur || iList[0]?.id || '');
   };
+
+  const filteredItems = useMemo(() => {
+    const normalizedQuery = query.trim().toLowerCase();
+    const filtered = items.filter((item) => {
+      const matchesQuery = !normalizedQuery || `${item.sku} ${item.name} ${item.supplier ?? ''}`.toLowerCase().includes(normalizedQuery);
+      const isLow = item.quantityOnHand <= item.reorderPoint;
+      const matchesStock = stockFilter === 'all' || (stockFilter === 'low' ? isLow : !isLow);
+      return matchesQuery && matchesStock;
+    });
+    return [...filtered].sort((left, right) => {
+      if (sortBy === 'qty-asc') return left.quantityOnHand - right.quantityOnHand;
+      if (sortBy === 'qty-desc') return right.quantityOnHand - left.quantityOnHand;
+      return left.name.localeCompare(right.name);
+    });
+  }, [items, query, sortBy, stockFilter]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredItems.length / pageSize));
+  const pagedItems = useMemo(
+    () => filteredItems.slice((page - 1) * pageSize, page * pageSize),
+    [filteredItems, page, pageSize],
+  );
 
   useEffect(() => {
     void Promise.all([inventoryService.listItems(), inventoryService.listMovements()]).then(([iList, mList]) => {
@@ -47,11 +75,13 @@ export function InventoryPage() {
 
   const submitItem = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (isSubmittingItem) return;
     if (!sku.trim() || !itemName.trim() || !unit.trim()) {
       setItemError('SKU, name, and unit are required.');
       return;
     }
     setItemError('');
+    setIsSubmittingItem(true);
     try {
       await inventoryService.createItem(sku.trim(), itemName.trim(), unit.trim(), qty, reorderPoint, {
         supplier: supplier.trim() || undefined,
@@ -65,16 +95,20 @@ export function InventoryPage() {
       setSupplier('');
     } catch (error) {
       setItemError(error instanceof Error ? error.message : 'Unable to create inventory item.');
+    } finally {
+      setIsSubmittingItem(false);
     }
   };
 
   const submitMovement = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (isSubmittingMovement) return;
     if (!movItemId || movQty <= 0 || !movReason.trim()) {
       setMovError('Item, quantity > 0, and reason are required.');
       return;
     }
     setMovError('');
+    setIsSubmittingMovement(true);
     try {
       await inventoryService.recordMovement(movItemId, movType, movQty, movReason.trim());
       await refresh();
@@ -82,6 +116,8 @@ export function InventoryPage() {
       setMovReason('');
     } catch (error) {
       setMovError(error instanceof Error ? error.message : 'Unable to record inventory movement.');
+    } finally {
+      setIsSubmittingMovement(false);
     }
   };
 
@@ -123,12 +159,17 @@ export function InventoryPage() {
             </label>
           </div>
           <div className="button-row">
-            <button className="primary" type="submit">Add item</button>
+            <button className="primary" disabled={isSubmittingItem} type="submit">{isSubmittingItem ? 'Saving…' : 'Add item'}</button>
           </div>
         </form>
 
         <div className="cards single-column">
-          {isLoading ? <EmptyStateCard title="Loading inventory items" message="Fetching the live inventory catalog and stock levels." /> : items.length ? items.map((item) => (
+          <div className="filter-card training-filter-card">
+            <label>Search<input value={query} onChange={(e) => { setPage(1); setQuery(e.target.value); }} placeholder="Search SKU, item, or supplier" /></label>
+            <label>Stock state<select value={stockFilter} onChange={(e) => { setPage(1); setStockFilter(e.target.value as typeof stockFilter); }}><option value="all">All stock states</option><option value="low">Low stock</option><option value="healthy">Healthy stock</option></select></label>
+            <label>Sort by<select value={sortBy} onChange={(e) => { setPage(1); setSortBy(e.target.value as typeof sortBy); }}><option value="name-asc">Name A-Z</option><option value="qty-asc">Lowest quantity</option><option value="qty-desc">Highest quantity</option></select></label>
+          </div>
+          {isLoading ? <EmptyStateCard title="Loading inventory items" message="Fetching the live inventory catalog and stock levels." /> : pagedItems.length ? pagedItems.map((item) => (
             <article className="record-card" key={item.id}>
               <div className="record-card-header">
                 <h3>{item.name}</h3>
@@ -142,6 +183,11 @@ export function InventoryPage() {
               <p>Movements: {movements.filter((m) => m.inventoryItemId === item.id).length}</p>
             </article>
           )) : <EmptyStateCard title="No inventory items yet" message="Add an inventory item above." />}
+          <div className="button-row table-pagination-row">
+            <button className="secondary" disabled={page <= 1} onClick={() => setPage((current) => Math.max(1, current - 1))} type="button">Previous</button>
+            <span>Page {page} of {totalPages} · {filteredItems.length} matching items</span>
+            <button className="secondary" disabled={page >= totalPages} onClick={() => setPage((current) => Math.min(totalPages, current + 1))} type="button">Next</button>
+          </div>
         </div>
       </div>
 
@@ -168,7 +214,7 @@ export function InventoryPage() {
           <label>Reason *
             <input value={movReason} onChange={(e) => setMovReason(e.target.value)} placeholder="Service usage, restock, etc." required />
           </label>
-          <button className="primary align-end" type="submit">Record movement</button>
+          <button className="primary align-end" disabled={isSubmittingMovement} type="submit">{isSubmittingMovement ? 'Saving…' : 'Record movement'}</button>
         </form>
       </section>
 

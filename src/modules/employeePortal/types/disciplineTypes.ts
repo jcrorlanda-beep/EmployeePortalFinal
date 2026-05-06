@@ -7,6 +7,7 @@ export interface DisciplineCategory {
   defaultSeverity: DisciplineSeverity;
   active: boolean;
   createdAt: string;
+  updatedAt: string;
 }
 
 export interface DisciplineRecord {

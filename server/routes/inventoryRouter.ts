@@ -3,10 +3,19 @@ import { z } from 'zod';
 import { prisma } from '../prisma/client';
 import { requireAuth } from '../middleware/auth';
 import { requirePermissionForMethods } from '../middleware/permissions';
-import { writeAuditLog } from '../services/auditService';
+import { recordAuditEvent } from '../services/auditPersistenceService';
+import { syncAttachmentReference } from '../services/attachmentPersistenceService';
 import { portalPermissions } from '../types/permissions';
 
 export const inventoryRouter = Router();
+
+const staleRecordMessage = 'Record was updated by another user. Please refresh and try again.';
+const staleRecordError = () => Object.assign(new Error(staleRecordMessage), { status: 409, code: 'STALE_RECORD' });
+const assertFreshRecord = (expectedUpdatedAt: string | undefined, actualUpdatedAt: Date) => {
+  if (expectedUpdatedAt && actualUpdatedAt.toISOString() !== new Date(expectedUpdatedAt).toISOString()) {
+    throw staleRecordError();
+  }
+};
 
 inventoryRouter.use('/api/employee-portal/inventory', requirePermissionForMethods(['POST', 'PATCH', 'DELETE'], portalPermissions.inventoryManage));
 
@@ -21,7 +30,9 @@ const inventoryItemSchema = z.object({
   photoReference: z.string().optional(),
 });
 
-const inventoryItemUpdateSchema = inventoryItemSchema.partial();
+const inventoryItemUpdateSchema = inventoryItemSchema.partial().extend({
+  expectedUpdatedAt: z.string().optional(),
+});
 
 const movementSchema = z.object({
   inventoryItemId: z.string().min(1),
@@ -30,7 +41,6 @@ const movementSchema = z.object({
   reason: z.string().min(1),
 });
 
-const actorFromRequest = (request: { user?: { email?: string } }) => request.user?.email ?? 'anonymous';
 const decimalToNumber = (value: { toNumber?: () => number } | number | null | undefined) =>
   typeof value === 'number' ? value : value?.toNumber?.() ?? 0;
 
@@ -114,13 +124,24 @@ inventoryRouter.post('/api/employee-portal/inventory/items', requireAuth, async 
       },
     });
     const mapped = mapInventoryItem(item);
-    await writeAuditLog({
+    await syncAttachmentReference({
+      request: req,
+      module: 'Inventory',
+      entityType: 'inventory_item',
+      entityId: item.id,
+      referenceKey: 'inventory-reference-photo',
+      referenceUrl: item.photoReference,
+      description: `Reference photo for inventory item ${item.name}.`,
+    });
+    await recordAuditEvent({
+      request: req,
       module: 'Inventory',
       action: 'inventory.item.created',
-      actor: actorFromRequest(req),
+      entityType: 'inventory_item',
       entityId: item.id,
+      entityLabel: item.name,
       summary: `Created inventory item ${item.name}.`,
-      afterPayload: mapped,
+      afterSnapshot: mapped,
     });
     res.status(201).json({ success: true, data: mapped });
   } catch (err) {
@@ -138,24 +159,37 @@ inventoryRouter.patch('/api/employee-portal/inventory/items/:id', requireAuth, a
     if (!existing) {
       return next(Object.assign(new Error('Inventory item not found'), { status: 404, code: 'NOT_FOUND' }));
     }
+    const { expectedUpdatedAt, ...payload } = parsed.data;
+    assertFreshRecord(expectedUpdatedAt, existing.updatedAt);
     const item = await prisma.inventoryItem.update({
       where: { id: String(req.params.id) },
       data: {
-        ...parsed.data,
-        supplier: parsed.data.supplier?.trim(),
-        costPlaceholder: parsed.data.costPlaceholder?.trim(),
-        photoReference: parsed.data.photoReference?.trim(),
+        ...payload,
+        supplier: payload.supplier?.trim(),
+        costPlaceholder: payload.costPlaceholder?.trim(),
+        photoReference: payload.photoReference?.trim(),
       },
     });
     const mapped = mapInventoryItem(item);
-    await writeAuditLog({
+    await syncAttachmentReference({
+      request: req,
+      module: 'Inventory',
+      entityType: 'inventory_item',
+      entityId: item.id,
+      referenceKey: 'inventory-reference-photo',
+      referenceUrl: item.photoReference,
+      description: `Reference photo for inventory item ${item.name}.`,
+    });
+    await recordAuditEvent({
+      request: req,
       module: 'Inventory',
       action: 'inventory.item.updated',
-      actor: actorFromRequest(req),
+      entityType: 'inventory_item',
       entityId: item.id,
+      entityLabel: item.name,
       summary: `Updated inventory item ${item.name}.`,
-      beforePayload: mapInventoryItem(existing),
-      afterPayload: mapped,
+      beforeSnapshot: mapInventoryItem(existing),
+      afterSnapshot: mapped,
     });
     res.json({ success: true, data: mapped });
   } catch (err) {
@@ -187,13 +221,15 @@ inventoryRouter.post('/api/employee-portal/inventory/movements', requireAuth, as
       },
     });
     const mapped = mapMovement(movement);
-    await writeAuditLog({
+    await recordAuditEvent({
+      request: req,
       module: 'Inventory',
       action: 'inventory.movement.created',
-      actor: actorFromRequest(req),
+      entityType: 'inventory_movement',
       entityId: movement.id,
+      entityLabel: existingItem.name,
       summary: `Recorded ${movement.movementType} inventory movement for ${existingItem.name}.`,
-      afterPayload: mapped,
+      afterSnapshot: mapped,
     });
     res.status(201).json({ success: true, data: mapped });
   } catch (err) {

@@ -5,8 +5,15 @@ type Token =
   | { type: 'paren'; value: '(' | ')' };
 
 const allowedExpressionPattern = /^[A-Za-z0-9_+\-*/().\s]+$/;
+const maxExpressionLength = 500;
+const maxTokenCount = 200;
+const maxParserDepth = 32;
 
 const tokenize = (expression: string): Token[] => {
+  if (expression.length > maxExpressionLength) {
+    throw new Error('Expression is too long for preview.');
+  }
+
   const tokens: Token[] = [];
   let index = 0;
 
@@ -51,6 +58,10 @@ const tokenize = (expression: string): Token[] => {
     }
 
     throw new Error(`Unsupported character "${char}" in expression.`);
+  }
+
+  if (tokens.length > maxTokenCount) {
+    throw new Error('Expression is too complex for preview.');
   }
 
   return tokens;
@@ -112,6 +123,9 @@ class Parser {
   }
 
   private parseFactor(): number {
+    if (this.index > maxTokenCount || this.tokens.length > maxTokenCount) {
+      throw new Error('Expression is too complex for preview.');
+    }
     const token = this.current();
     if (!token) {
       throw new Error('Unexpected end of expression.');
@@ -136,6 +150,10 @@ class Parser {
     }
 
     if (token.type === 'paren' && token.value === '(') {
+      const currentDepth = this.tokens.slice(0, this.index).filter((item) => item.type === 'paren' && item.value === '(').length;
+      if (currentDepth >= maxParserDepth) {
+        throw new Error('Expression nesting is too deep.');
+      }
       this.consume();
       const value = this.parseExpression();
       const closing = this.current();
@@ -155,6 +173,9 @@ export const evaluateFormulaPreview = (input: {
   allowedVariables: string[];
   variables: Record<string, number>;
 }) => {
+  if (!input.expression.trim()) {
+    throw new Error('Expression is required for preview.');
+  }
   if (!allowedExpressionPattern.test(input.expression)) {
     throw new Error('Expression contains unsupported characters.');
   }

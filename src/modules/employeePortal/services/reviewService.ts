@@ -73,20 +73,20 @@ export const reviewService = {
     );
   },
 
-  async updateReviewItemScore(reviewId: string, itemId: string, score: number, notes?: string): Promise<PerformanceReview> {
+  async updateReviewItemScore(reviewId: string, itemId: string, score: number, notes?: string, expectedUpdatedAt?: string): Promise<PerformanceReview> {
     return callApi(() =>
       portalApiFetch<PerformanceReview>(`/reviews/${reviewId}/items/${itemId}`, {
         method: 'PATCH',
-        body: JSON.stringify({ score, notes }),
+        body: JSON.stringify({ score, notes, expectedUpdatedAt }),
       }),
     );
   },
 
-  async updateReviewStatus(id: string, status: ReviewStatus): Promise<PerformanceReview> {
+  async updateReviewStatus(id: string, status: ReviewStatus, expectedUpdatedAt?: string): Promise<PerformanceReview> {
     return callApi(() =>
       portalApiFetch<PerformanceReview>(`/reviews/${id}`, {
         method: 'PATCH',
-        body: JSON.stringify({ status }),
+        body: JSON.stringify({ status, expectedUpdatedAt }),
       }),
     );
   },

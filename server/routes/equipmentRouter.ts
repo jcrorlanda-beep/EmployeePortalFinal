@@ -3,10 +3,19 @@ import { z } from 'zod';
 import { prisma } from '../prisma/client';
 import { requireAuth } from '../middleware/auth';
 import { requirePermissionForMethods } from '../middleware/permissions';
-import { writeAuditLog } from '../services/auditService';
+import { recordAuditEvent } from '../services/auditPersistenceService';
+import { syncAttachmentReference } from '../services/attachmentPersistenceService';
 import { portalPermissions } from '../types/permissions';
 
 export const equipmentRouter = Router();
+
+const staleRecordMessage = 'Record was updated by another user. Please refresh and try again.';
+const staleRecordError = () => Object.assign(new Error(staleRecordMessage), { status: 409, code: 'STALE_RECORD' });
+const assertFreshRecord = (expectedUpdatedAt: string | undefined, actualUpdatedAt: Date) => {
+  if (expectedUpdatedAt && actualUpdatedAt.toISOString() !== new Date(expectedUpdatedAt).toISOString()) {
+    throw staleRecordError();
+  }
+};
 
 equipmentRouter.use('/api/employee-portal/equipment', requirePermissionForMethods(['POST', 'PATCH', 'DELETE'], portalPermissions.equipmentManage));
 
@@ -23,9 +32,12 @@ const toolDepositSchema = z.object({
   status: z.string().optional().default('active'),
 });
 
-const toolDepositUpdateSchema = toolDepositSchema.partial();
+const toolDepositUpdateSchema = toolDepositSchema.partial().extend({
+  expectedUpdatedAt: z.string().optional(),
+});
 const toolDepositResolutionSchema = z.object({
   notes: z.string().optional(),
+  expectedUpdatedAt: z.string().optional(),
 });
 
 const equipmentItemSchema = z.object({
@@ -43,7 +55,9 @@ const equipmentItemSchema = z.object({
   status: z.string().optional().default('available'),
 });
 
-const equipmentItemUpdateSchema = equipmentItemSchema.partial();
+const equipmentItemUpdateSchema = equipmentItemSchema.partial().extend({
+  expectedUpdatedAt: z.string().optional(),
+});
 
 const assignmentSchema = z.object({
   employeeId: z.string().min(1),
@@ -56,9 +70,10 @@ const assignmentSchema = z.object({
   photoProofReference: z.string().optional(),
 });
 
-const assignmentUpdateSchema = assignmentSchema.partial();
+const assignmentUpdateSchema = assignmentSchema.partial().extend({
+  expectedUpdatedAt: z.string().optional(),
+});
 
-const actorFromRequest = (request: { user?: { email?: string } }) => request.user?.email ?? 'anonymous';
 const decimalToNumber = (value: { toNumber?: () => number } | number | null | undefined) =>
   typeof value === 'number' ? value : value?.toNumber?.() ?? 0;
 
@@ -243,13 +258,15 @@ equipmentRouter.post('/api/employee-portal/equipment/tool-deposits', requireAuth
     });
     await syncToolDepositLedger(deposit.employeeId, deposit.payrollFormulaCode ?? deposit.amountFormulaCode);
     const mapped = mapToolDeposit(deposit);
-    await writeAuditLog({
+    await recordAuditEvent({
+      request: req,
       module: 'ToolDeposit',
       action: 'tool_deposit.created',
-      actor: actorFromRequest(req),
+      entityType: 'tool_deposit',
       entityId: deposit.id,
+      entityLabel: deposit.description || deposit.id,
       summary: `Created tool deposit ${deposit.description || deposit.id}.`,
-      afterPayload: mapped,
+      afterSnapshot: mapped,
     });
     res.status(201).json({ success: true, data: mapped });
   } catch (err) {
@@ -268,6 +285,7 @@ equipmentRouter.patch('/api/employee-portal/equipment/tool-deposits/:id', requir
       return next(Object.assign(new Error('Tool deposit not found'), { status: 404, code: 'NOT_FOUND' }));
     }
     const payload = parsed.data;
+    assertFreshRecord(payload.expectedUpdatedAt, existing.updatedAt);
     const deposit = await prisma.toolDeposit.update({
       where: { id: String(req.params.id) },
       data: {
@@ -285,14 +303,16 @@ equipmentRouter.patch('/api/employee-portal/equipment/tool-deposits/:id', requir
     });
     await syncToolDepositLedger(deposit.employeeId, deposit.payrollFormulaCode ?? deposit.amountFormulaCode);
     const mapped = mapToolDeposit(deposit);
-    await writeAuditLog({
+    await recordAuditEvent({
+      request: req,
       module: 'ToolDeposit',
       action: 'tool_deposit.updated',
-      actor: actorFromRequest(req),
+      entityType: 'tool_deposit',
       entityId: deposit.id,
+      entityLabel: deposit.description || deposit.id,
       summary: `Updated tool deposit ${deposit.description || deposit.id}.`,
-      beforePayload: mapToolDeposit(existing),
-      afterPayload: mapped,
+      beforeSnapshot: mapToolDeposit(existing),
+      afterSnapshot: mapped,
     });
     res.json({ success: true, data: mapped });
   } catch (err) {
@@ -310,6 +330,7 @@ equipmentRouter.post('/api/employee-portal/equipment/tool-deposits/:id/refund', 
     if (!existing) {
       return next(Object.assign(new Error('Tool deposit not found'), { status: 404, code: 'NOT_FOUND' }));
     }
+    assertFreshRecord(parsed.data.expectedUpdatedAt, existing.updatedAt);
     const deposit = await prisma.toolDeposit.update({
       where: { id: String(req.params.id) },
       data: {
@@ -321,14 +342,16 @@ equipmentRouter.post('/api/employee-portal/equipment/tool-deposits/:id/refund', 
     });
     await syncToolDepositLedger(deposit.employeeId, deposit.payrollFormulaCode ?? deposit.amountFormulaCode);
     const mapped = mapToolDeposit(deposit);
-    await writeAuditLog({
+    await recordAuditEvent({
+      request: req,
       module: 'ToolDeposit',
       action: 'tool_deposit.refund_marked',
-      actor: actorFromRequest(req),
+      entityType: 'tool_deposit',
       entityId: deposit.id,
+      entityLabel: deposit.description || deposit.id,
       summary: `Marked tool deposit ${deposit.description || deposit.id} as refunded.`,
-      beforePayload: mapToolDeposit(existing),
-      afterPayload: mapped,
+      beforeSnapshot: mapToolDeposit(existing),
+      afterSnapshot: mapped,
     });
     res.json({ success: true, data: mapped });
   } catch (err) {
@@ -346,6 +369,7 @@ equipmentRouter.post('/api/employee-portal/equipment/tool-deposits/:id/forfeit',
     if (!existing) {
       return next(Object.assign(new Error('Tool deposit not found'), { status: 404, code: 'NOT_FOUND' }));
     }
+    assertFreshRecord(parsed.data.expectedUpdatedAt, existing.updatedAt);
     const deposit = await prisma.toolDeposit.update({
       where: { id: String(req.params.id) },
       data: {
@@ -357,14 +381,16 @@ equipmentRouter.post('/api/employee-portal/equipment/tool-deposits/:id/forfeit',
     });
     await syncToolDepositLedger(deposit.employeeId, deposit.payrollFormulaCode ?? deposit.amountFormulaCode);
     const mapped = mapToolDeposit(deposit);
-    await writeAuditLog({
+    await recordAuditEvent({
+      request: req,
       module: 'ToolDeposit',
       action: 'tool_deposit.forfeit_marked',
-      actor: actorFromRequest(req),
+      entityType: 'tool_deposit',
       entityId: deposit.id,
+      entityLabel: deposit.description || deposit.id,
       summary: `Marked tool deposit ${deposit.description || deposit.id} as forfeited.`,
-      beforePayload: mapToolDeposit(existing),
-      afterPayload: mapped,
+      beforeSnapshot: mapToolDeposit(existing),
+      afterSnapshot: mapped,
     });
     res.json({ success: true, data: mapped });
   } catch (err) {
@@ -413,13 +439,44 @@ equipmentRouter.post('/api/employee-portal/equipment/items', requireAuth, async 
       },
     });
     const mapped = mapEquipmentItem(item);
-    await writeAuditLog({
+    await Promise.all([
+      syncAttachmentReference({
+        request: req,
+        module: 'Equipment',
+        entityType: 'equipment_item',
+        entityId: item.id,
+        referenceKey: 'equipment-photo',
+        referenceUrl: item.photoReference,
+        description: `Primary equipment photo for ${item.name}.`,
+      }),
+      syncAttachmentReference({
+        request: req,
+        module: 'Equipment',
+        entityType: 'equipment_item',
+        entityId: item.id,
+        referenceKey: 'serial-number-photo',
+        referenceUrl: item.serialNumberPhotoReference,
+        description: `Serial number photo for ${item.name}.`,
+      }),
+      syncAttachmentReference({
+        request: req,
+        module: 'Equipment',
+        entityType: 'equipment_item',
+        entityId: item.id,
+        referenceKey: 'damage-photo',
+        referenceUrl: item.damagePhotoReference,
+        description: `Damage photo for ${item.name}.`,
+      }),
+    ]);
+    await recordAuditEvent({
+      request: req,
       module: 'Equipment',
       action: 'equipment.created',
-      actor: actorFromRequest(req),
+      entityType: 'equipment_item',
       entityId: item.id,
+      entityLabel: item.name,
       summary: `Created equipment item ${item.name}.`,
-      afterPayload: mapped,
+      afterSnapshot: mapped,
     });
     res.status(201).json({ success: true, data: mapped });
   } catch (err) {
@@ -437,28 +494,61 @@ equipmentRouter.patch('/api/employee-portal/equipment/items/:id', requireAuth, a
     if (!existing) {
       return next(Object.assign(new Error('Equipment item not found'), { status: 404, code: 'NOT_FOUND' }));
     }
+    const { expectedUpdatedAt, ...payload } = parsed.data;
+    assertFreshRecord(expectedUpdatedAt, existing.updatedAt);
     const item = await prisma.equipmentItem.update({
       where: { id: String(req.params.id) },
       data: {
-        ...parsed.data,
-        serialNumber: parsed.data.serialNumber?.trim(),
-        brand: parsed.data.brand?.trim(),
-        model: parsed.data.model?.trim(),
-        location: parsed.data.location?.trim(),
-        photoReference: parsed.data.photoReference?.trim(),
-        serialNumberPhotoReference: parsed.data.serialNumberPhotoReference?.trim(),
-        damagePhotoReference: parsed.data.damagePhotoReference?.trim(),
+        ...payload,
+        serialNumber: payload.serialNumber?.trim(),
+        brand: payload.brand?.trim(),
+        model: payload.model?.trim(),
+        location: payload.location?.trim(),
+        photoReference: payload.photoReference?.trim(),
+        serialNumberPhotoReference: payload.serialNumberPhotoReference?.trim(),
+        damagePhotoReference: payload.damagePhotoReference?.trim(),
       },
     });
     const mapped = mapEquipmentItem(item);
-    await writeAuditLog({
+    await Promise.all([
+      syncAttachmentReference({
+        request: req,
+        module: 'Equipment',
+        entityType: 'equipment_item',
+        entityId: item.id,
+        referenceKey: 'equipment-photo',
+        referenceUrl: item.photoReference,
+        description: `Primary equipment photo for ${item.name}.`,
+      }),
+      syncAttachmentReference({
+        request: req,
+        module: 'Equipment',
+        entityType: 'equipment_item',
+        entityId: item.id,
+        referenceKey: 'serial-number-photo',
+        referenceUrl: item.serialNumberPhotoReference,
+        description: `Serial number photo for ${item.name}.`,
+      }),
+      syncAttachmentReference({
+        request: req,
+        module: 'Equipment',
+        entityType: 'equipment_item',
+        entityId: item.id,
+        referenceKey: 'damage-photo',
+        referenceUrl: item.damagePhotoReference,
+        description: `Damage photo for ${item.name}.`,
+      }),
+    ]);
+    await recordAuditEvent({
+      request: req,
       module: 'Equipment',
       action: 'equipment.updated',
-      actor: actorFromRequest(req),
+      entityType: 'equipment_item',
       entityId: item.id,
+      entityLabel: item.name,
       summary: `Updated equipment item ${item.name}.`,
-      beforePayload: mapEquipmentItem(existing),
-      afterPayload: mapped,
+      beforeSnapshot: mapEquipmentItem(existing),
+      afterSnapshot: mapped,
     });
     res.json({ success: true, data: mapped });
   } catch (err) {
@@ -515,13 +605,24 @@ equipmentRouter.post('/api/employee-portal/equipment/assignments', requireAuth, 
       },
     });
     const mapped = mapAssignment(assignment);
-    await writeAuditLog({
+    await syncAttachmentReference({
+      request: req,
+      module: 'Equipment',
+      entityType: 'equipment_assignment',
+      entityId: assignment.id,
+      referenceKey: 'assignment-proof-photo',
+      referenceUrl: assignment.photoProofReference,
+      description: `Assignment proof photo for equipment assignment ${assignment.id}.`,
+    });
+    await recordAuditEvent({
+      request: req,
       module: 'Equipment',
       action: 'equipment.assigned',
-      actor: actorFromRequest(req),
+      entityType: 'equipment_assignment',
       entityId: assignment.id,
+      entityLabel: assignment.equipmentItemId,
       summary: `Assigned equipment item ${assignment.equipmentItemId} to employee ${assignment.employeeId}.`,
-      afterPayload: mapped,
+      afterSnapshot: mapped,
     });
     res.status(201).json({ success: true, data: mapped });
   } catch (err) {
@@ -540,6 +641,7 @@ equipmentRouter.patch('/api/employee-portal/equipment/assignments/:id', requireA
       return next(Object.assign(new Error('Equipment assignment not found'), { status: 404, code: 'NOT_FOUND' }));
     }
     const payload = parsed.data;
+    assertFreshRecord(payload.expectedUpdatedAt, existing.updatedAt);
     const assignment = await prisma.equipmentAssignment.update({
       where: { id: String(req.params.id) },
       data: {
@@ -575,36 +677,51 @@ equipmentRouter.patch('/api/employee-portal/equipment/assignments/:id', requireA
       });
     }
     const mapped = mapAssignment(assignment);
+    await syncAttachmentReference({
+      request: req,
+      module: 'Equipment',
+      entityType: 'equipment_assignment',
+      entityId: assignment.id,
+      referenceKey: 'assignment-proof-photo',
+      referenceUrl: assignment.photoProofReference,
+      description: `Assignment proof photo for equipment assignment ${assignment.id}.`,
+    });
     if (payload.returnedOn) {
-      await writeAuditLog({
+      await recordAuditEvent({
+        request: req,
         module: 'Equipment',
         action: 'equipment.returned',
-        actor: actorFromRequest(req),
+        entityType: 'equipment_assignment',
         entityId: assignment.id,
+        entityLabel: equipmentItemId,
         summary: `Returned equipment item ${equipmentItemId}.`,
-        beforePayload: mapAssignment(existing),
-        afterPayload: mapped,
+        beforeSnapshot: mapAssignment(existing),
+        afterSnapshot: mapped,
       });
       if (payload.damageStatus && payload.damageStatus !== 'none') {
-        await writeAuditLog({
+        await recordAuditEvent({
+          request: req,
           module: 'Equipment',
           action: 'equipment.damage_reported',
-          actor: actorFromRequest(req),
+          entityType: 'equipment_assignment',
           entityId: assignment.id,
+          entityLabel: equipmentItemId,
           summary: `Reported ${payload.damageStatus} damage for equipment item ${equipmentItemId}.`,
-          beforePayload: mapAssignment(existing),
-          afterPayload: mapped,
+          beforeSnapshot: mapAssignment(existing),
+          afterSnapshot: mapped,
         });
       }
     } else {
-      await writeAuditLog({
+      await recordAuditEvent({
+        request: req,
         module: 'Equipment',
         action: 'equipment.updated',
-        actor: actorFromRequest(req),
+        entityType: 'equipment_assignment',
         entityId: assignment.id,
+        entityLabel: assignment.id,
         summary: `Updated equipment assignment ${assignment.id}.`,
-        beforePayload: mapAssignment(existing),
-        afterPayload: mapped,
+        beforeSnapshot: mapAssignment(existing),
+        afterSnapshot: mapped,
       });
     }
     res.json({ success: true, data: mapped });

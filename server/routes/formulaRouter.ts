@@ -19,11 +19,15 @@ formulaRouter.use(
   requirePermissionForMethods(['POST', 'PATCH', 'DELETE'], portalPermissions.payrollManage),
 );
 
+const formulaCodePattern = /^[A-Z][A-Z0-9_]*$/;
+const formulaVariablePattern = /^[A-Z][A-Z0-9_]*$/;
+
 const formulaSchema = z.object({
-  code: z.string().min(1),
-  name: z.string().min(1),
-  expression: z.string().min(1),
-  variables: z.array(z.string()),
+  code: z.string().trim().min(1).max(80).regex(formulaCodePattern, 'Formula code must use uppercase letters, numbers, and underscores only.'),
+  name: z.string().trim().min(1).max(120),
+  expression: z.string().trim().min(1).max(500),
+  variables: z.array(z.string().trim().regex(formulaVariablePattern, 'Variable names must use uppercase letters, numbers, and underscores only.')).max(20)
+    .refine((variables) => new Set(variables).size === variables.length, 'Variable names must be unique.'),
   componentType: z.string().optional().default('earning'),
   taxable: z.boolean().optional().default(false),
   effectiveDate: z.string().optional().default(new Date().toISOString().slice(0, 10)),
@@ -33,8 +37,11 @@ const formulaSchema = z.object({
 const formulaUpdateSchema = formulaSchema.partial();
 
 const previewSchema = z.object({
-  formulaCode: z.string().min(1),
-  variables: z.record(z.string(), z.number()),
+  formulaCode: z.string().trim().min(1).max(80).regex(formulaCodePattern),
+  variables: z.record(z.string().trim().regex(formulaVariablePattern), z.number().finite()).refine(
+    (variables) => Object.keys(variables).length <= 20,
+    'Too many preview variables provided.',
+  ),
 });
 
 const actorFromRequest = (request: { user?: { email?: string } }) => request.user?.email ?? 'anonymous';
@@ -56,13 +63,14 @@ formulaRouter.post('/api/employee-portal/formulas', requireAuth, async (req, res
     }
 
     const payload = parsed.data;
+    const normalizedVariables = [...new Set(payload.variables.map((variable) => variable.trim().toUpperCase()))];
     const formula = await prisma.payrollFormula.create({
       data: {
         code: payload.code.trim().toUpperCase(),
         name: payload.name.trim(),
         expression: payload.expression.trim(),
         variables: serializeFormulaVariablesPayload({
-          names: payload.variables,
+          names: normalizedVariables,
           componentType: payload.componentType,
           taxable: payload.taxable,
           effectiveDate: payload.effectiveDate,
@@ -98,15 +106,18 @@ formulaRouter.patch('/api/employee-portal/formulas/:id', requireAuth, async (req
 
     const existingMeta = parseFormulaVariablesPayload(existing.variables);
     const payload = parsed.data;
+    const normalizedVariables = payload.variables
+      ? [...new Set(payload.variables.map((variable) => variable.trim().toUpperCase()))]
+      : undefined;
     const formula = await prisma.payrollFormula.update({
       where: { id: String(req.params.id) },
       data: {
         code: payload.code?.trim().toUpperCase(),
         name: payload.name?.trim(),
         expression: payload.expression?.trim(),
-        variables: payload.variables || payload.componentType || typeof payload.taxable === 'boolean' || payload.effectiveDate
+        variables: normalizedVariables || payload.componentType || typeof payload.taxable === 'boolean' || payload.effectiveDate
           ? serializeFormulaVariablesPayload({
-              names: payload.variables ?? existingMeta.names,
+              names: normalizedVariables ?? existingMeta.names,
               componentType: payload.componentType ?? existingMeta.componentType,
               taxable: payload.taxable ?? existingMeta.taxable,
               effectiveDate: payload.effectiveDate ?? existingMeta.effectiveDate,
@@ -147,7 +158,7 @@ formulaRouter.post('/api/employee-portal/formulas/preview', requireAuth, async (
     const previewAmount = evaluateFormulaPreview({
       expression: formula.expression,
       allowedVariables: meta.names,
-      variables: parsed.data.variables,
+      variables: Object.fromEntries(Object.entries(parsed.data.variables).map(([key, value]) => [key.trim().toUpperCase(), value])),
     });
 
     const payload = {

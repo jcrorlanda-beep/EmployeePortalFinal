@@ -98,11 +98,11 @@ export const schedulingService = {
     );
   },
 
-  async updateInstanceStatus(id: string, status: ScheduleInstanceStatus): Promise<ScheduleInstance> {
+  async updateInstanceStatus(id: string, status: ScheduleInstanceStatus, expectedUpdatedAt?: string): Promise<ScheduleInstance> {
     return callApi(() =>
       portalApiFetch<ScheduleInstance>(`/schedules/instances/${id}`, {
         method: 'PATCH',
-        body: JSON.stringify({ status }),
+        body: JSON.stringify({ status, expectedUpdatedAt }),
       }),
     );
   },
@@ -135,12 +135,12 @@ export const schedulingService = {
     );
   },
 
-  async updatePtoStatus(id: string, status: PtoStatus, reviewNotes?: string): Promise<PtoRequest> {
+  async updatePtoStatus(id: string, status: PtoStatus, reviewNotes?: string, expectedUpdatedAt?: string): Promise<PtoRequest> {
     const path = status === 'approved' ? `/leave-requests/${id}/approve` : `/leave-requests/${id}/reject`;
     return callApi(() =>
       portalApiFetch<PtoRequest>(path, {
         method: 'POST',
-        body: JSON.stringify({ reviewNotes }),
+        body: JSON.stringify({ reviewNotes, expectedUpdatedAt }),
       }),
     );
   },
@@ -173,37 +173,38 @@ export const schedulingService = {
     );
   },
 
-  async acceptSwapRequest(id: string, targetEmployeeNotes?: string): Promise<ScheduleSwapRequest> {
+  async acceptSwapRequest(id: string, targetEmployeeNotes?: string, expectedUpdatedAt?: string): Promise<ScheduleSwapRequest> {
     return callApi(() =>
       portalApiFetch<ScheduleSwapRequest>(`/schedule-swaps/${id}/accept`, {
         method: 'POST',
-        body: JSON.stringify({ targetEmployeeNotes }),
+        body: JSON.stringify({ targetEmployeeNotes, expectedUpdatedAt }),
       }),
     );
   },
 
-  async approveSwapRequest(id: string, managerNotes?: string): Promise<ScheduleSwapRequest> {
+  async approveSwapRequest(id: string, managerNotes?: string, expectedUpdatedAt?: string): Promise<ScheduleSwapRequest> {
     return callApi(() =>
       portalApiFetch<ScheduleSwapRequest>(`/schedule-swaps/${id}/approve`, {
         method: 'POST',
-        body: JSON.stringify({ managerNotes }),
+        body: JSON.stringify({ managerNotes, expectedUpdatedAt }),
       }),
     );
   },
 
-  async rejectSwapRequest(id: string, managerNotes?: string): Promise<ScheduleSwapRequest> {
+  async rejectSwapRequest(id: string, managerNotes?: string, expectedUpdatedAt?: string): Promise<ScheduleSwapRequest> {
     return callApi(() =>
       portalApiFetch<ScheduleSwapRequest>(`/schedule-swaps/${id}/reject`, {
         method: 'POST',
-        body: JSON.stringify({ managerNotes }),
+        body: JSON.stringify({ managerNotes, expectedUpdatedAt }),
       }),
     );
   },
 
-  async cancelSwapRequest(id: string): Promise<ScheduleSwapRequest> {
+  async cancelSwapRequest(id: string, expectedUpdatedAt?: string): Promise<ScheduleSwapRequest> {
     return callApi(() =>
       portalApiFetch<ScheduleSwapRequest>(`/schedule-swaps/${id}/cancel`, {
         method: 'POST',
+        body: JSON.stringify({ expectedUpdatedAt }),
       }),
     );
   },

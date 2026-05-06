@@ -8,6 +8,14 @@ import { portalPermissions } from '../types/permissions';
 
 export const positionRouter = Router();
 
+const staleRecordMessage = 'Record was updated by another user. Please refresh and try again.';
+const staleRecordError = () => Object.assign(new Error(staleRecordMessage), { status: 409, code: 'STALE_RECORD' });
+const assertFreshRecord = (expectedUpdatedAt: string | undefined, actualUpdatedAt: Date) => {
+  if (expectedUpdatedAt && actualUpdatedAt.toISOString() !== new Date(expectedUpdatedAt).toISOString()) {
+    throw staleRecordError();
+  }
+};
+
 positionRouter.use('/api/employee-portal/positions', requirePermissionForMethods(['POST', 'PATCH', 'DELETE'], portalPermissions.employeesManage), auditWrites('Position'));
 
 const positionSchema = z.object({
@@ -16,7 +24,9 @@ const positionSchema = z.object({
   level: z.string().min(1),
 });
 
-const positionUpdateSchema = positionSchema.partial();
+const positionUpdateSchema = positionSchema.partial().extend({
+  expectedUpdatedAt: z.string().optional(),
+});
 
 // GET /api/employee-portal/positions
 positionRouter.get('/api/employee-portal/positions', requireAuth, async (_req, res, next) => {
@@ -62,9 +72,15 @@ positionRouter.patch('/api/employee-portal/positions/:id', requireAuth, async (r
     if (!parsed.success) {
       return next(Object.assign(new Error('Validation failed'), { status: 400, code: 'VALIDATION_ERROR' }));
     }
+    const existing = await prisma.position.findUnique({ where: { id: String(req.params.id) } });
+    if (!existing) {
+      return next(Object.assign(new Error('Position not found'), { status: 404, code: 'NOT_FOUND' }));
+    }
+    const { expectedUpdatedAt, ...data } = parsed.data;
+    assertFreshRecord(expectedUpdatedAt, existing.updatedAt);
     const position = await prisma.position.update({
       where: { id: String(req.params.id) },
-      data: parsed.data,
+      data,
     });
     res.json({ success: true, data: position });
   } catch (err) {

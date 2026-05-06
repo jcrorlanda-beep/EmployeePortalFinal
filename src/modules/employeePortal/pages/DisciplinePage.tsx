@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { FormEvent } from 'react';
 import { EmployeePortalStatusBadge } from '../components/EmployeePortalStatusBadge';
 import { EmptyStateCard } from '../components/EmptyStateCard';
 import { employeeService } from '../services/employeeService';
+import { isStaleRecordError } from '../services/employeePortalApi';
 import { disciplineService, getDisciplineServiceStatus } from '../services/disciplineService';
 import type { Employee } from '../types/employeeTypes';
 import type { DisciplineCategory, DisciplineRecord, DisciplineRecordStatus, DisciplineSeverity } from '../types/disciplineTypes';
@@ -15,6 +16,7 @@ const empName = (employees: Employee[], id: string) => {
 };
 
 export function DisciplinePage() {
+  const pageSize = 6;
   const [categories, setCategories] = useState<DisciplineCategory[]>([]);
   const [records, setRecords] = useState<DisciplineRecord[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
@@ -27,10 +29,17 @@ export function DisciplinePage() {
   const [summary, setSummary] = useState('');
   const [correctiveAction, setCorrectiveAction] = useState('');
   const [attachmentRef, setAttachmentRef] = useState('');
+  const [query, setQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'all' | DisciplineRecordStatus>('all');
+  const [severityFilter, setSeverityFilter] = useState<'all' | DisciplineSeverity>('all');
+  const [page, setPage] = useState(1);
   const [catError, setCatError] = useState('');
   const [recError, setRecError] = useState('');
   const [loadError, setLoadError] = useState('');
   const [isLoading, setIsLoading] = useState(true);
+  const [isSubmittingCategory, setIsSubmittingCategory] = useState(false);
+  const [isSubmittingRecord, setIsSubmittingRecord] = useState(false);
+  const [pendingRecordId, setPendingRecordId] = useState<string | null>(null);
 
   const refresh = async () => {
     const [cats, recs] = await Promise.all([disciplineService.listCategories(), disciplineService.listRecords()]);
@@ -38,6 +47,26 @@ export function DisciplinePage() {
     setRecords(recs);
     setRecCatId((cur) => cur || cats[0]?.id || '');
   };
+
+  const filteredRecords = useMemo(() => {
+    const normalizedQuery = query.trim().toLowerCase();
+    return [...records]
+      .filter((record) => {
+        const statusMatch = statusFilter === 'all' || record.status === statusFilter;
+        const severityMatch = severityFilter === 'all' || record.severity === severityFilter;
+        const categoryName = categories.find((category) => category.id === record.categoryId)?.name ?? '';
+        const text = `${empName(employees, record.employeeId)} ${categoryName} ${record.summary}`.toLowerCase();
+        const queryMatch = !normalizedQuery || text.includes(normalizedQuery);
+        return statusMatch && severityMatch && queryMatch;
+      })
+      .sort((left, right) => right.incidentDate.localeCompare(left.incidentDate));
+  }, [categories, employees, query, records, severityFilter, statusFilter]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredRecords.length / pageSize));
+  const pagedRecords = useMemo(
+    () => filteredRecords.slice((page - 1) * pageSize, page * pageSize),
+    [filteredRecords, page, pageSize],
+  );
 
   useEffect(() => {
     void Promise.all([
@@ -61,11 +90,13 @@ export function DisciplinePage() {
 
   const submitCategory = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (isSubmittingCategory) return;
     if (!catName.trim()) {
       setCatError('Category name is required.');
       return;
     }
     setCatError('');
+    setIsSubmittingCategory(true);
     try {
       await disciplineService.createCategory(catName.trim(), catSeverity);
       await refresh();
@@ -73,16 +104,23 @@ export function DisciplinePage() {
       setCatSeverity('verbal');
     } catch (error) {
       setCatError(error instanceof Error ? error.message : 'Unable to create discipline category.');
+      if (isStaleRecordError(error)) {
+        await refresh();
+      }
+    } finally {
+      setIsSubmittingCategory(false);
     }
   };
 
   const submitRecord = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (isSubmittingRecord) return;
     if (!recEmpId || !recCatId || !incidentDate || !summary.trim()) {
       setRecError('Employee, category, incident date, and summary are required.');
       return;
     }
     setRecError('');
+    setIsSubmittingRecord(true);
     try {
       await disciplineService.createRecord(
         recEmpId,
@@ -99,15 +137,27 @@ export function DisciplinePage() {
       setAttachmentRef('');
     } catch (error) {
       setRecError(error instanceof Error ? error.message : 'Unable to create discipline record.');
+      if (isStaleRecordError(error)) {
+        await refresh();
+      }
+    } finally {
+      setIsSubmittingRecord(false);
     }
   };
 
-  const updateStatus = async (id: string, status: DisciplineRecordStatus) => {
+  const updateStatus = async (record: DisciplineRecord, status: DisciplineRecordStatus) => {
+    if (pendingRecordId) return;
+    setPendingRecordId(record.id);
     try {
-      await disciplineService.updateRecordStatus(id, status);
+      await disciplineService.updateRecordStatus(record.id, status, record.updatedAt);
       await refresh();
     } catch (error) {
       setRecError(error instanceof Error ? error.message : 'Unable to update discipline record.');
+      if (isStaleRecordError(error)) {
+        await refresh();
+      }
+    } finally {
+      setPendingRecordId(null);
     }
   };
 
@@ -139,7 +189,7 @@ export function DisciplinePage() {
             </label>
           </div>
           <div className="button-row">
-            <button className="primary" type="submit">Add category</button>
+            <button className="primary" disabled={isSubmittingCategory} type="submit">{isSubmittingCategory ? 'Saving…' : 'Add category'}</button>
           </div>
         </form>
 
@@ -194,14 +244,19 @@ export function DisciplinePage() {
             </label>
           </div>
           <div className="button-row">
-            <button className="primary" type="submit">Create write-up</button>
+            <button className="primary" disabled={isSubmittingRecord} type="submit">{isSubmittingRecord ? 'Saving…' : 'Create write-up'}</button>
           </div>
         </form>
       </section>
 
       <section className="crud-layout narrow">
         <div className="cards single-column">
-          {isLoading ? <EmptyStateCard title="Loading discipline records" message="Fetching live write-ups and acknowledgement status." /> : records.length ? records.map((rec) => {
+          <div className="filter-card training-filter-card">
+            <label>Search<input value={query} onChange={(e) => { setPage(1); setQuery(e.target.value); }} placeholder="Search employee, category, or summary" /></label>
+            <label>Status<select value={statusFilter} onChange={(e) => { setPage(1); setStatusFilter(e.target.value as typeof statusFilter); }}><option value="all">All statuses</option>{['draft', 'issued', 'acknowledged', 'hr-reviewed'].map((status) => <option key={status} value={status}>{status}</option>)}</select></label>
+            <label>Severity<select value={severityFilter} onChange={(e) => { setPage(1); setSeverityFilter(e.target.value as typeof severityFilter); }}><option value="all">All severities</option>{severityOptions.map((severity) => <option key={severity} value={severity}>{severity}</option>)}</select></label>
+          </div>
+          {isLoading ? <EmptyStateCard title="Loading discipline records" message="Fetching live write-ups and acknowledgement status." /> : pagedRecords.length ? pagedRecords.map((rec) => {
             const cat = categories.find((c) => c.id === rec.categoryId);
             return (
               <article className="record-card" key={rec.id}>
@@ -217,18 +272,23 @@ export function DisciplinePage() {
                 {rec.hrReviewedAt && <p>HR reviewed: {new Date(rec.hrReviewedAt).toLocaleString()}</p>}
                 <div className="button-row">
                   {rec.status === 'draft' && (
-                    <button className="primary" type="button" onClick={() => updateStatus(rec.id, 'issued')}>Issue</button>
+                    <button className="primary" disabled={pendingRecordId === rec.id} type="button" onClick={() => updateStatus(rec, 'issued')}>{pendingRecordId === rec.id ? 'Updating…' : 'Issue'}</button>
                   )}
                   {rec.status === 'issued' && (
-                    <button className="secondary" type="button" onClick={() => updateStatus(rec.id, 'acknowledged')}>Mark acknowledged</button>
+                    <button className="secondary" disabled={pendingRecordId === rec.id} type="button" onClick={() => updateStatus(rec, 'acknowledged')}>Mark acknowledged</button>
                   )}
                   {(rec.status === 'issued' || rec.status === 'acknowledged') && (
-                    <button className="secondary" type="button" onClick={() => updateStatus(rec.id, 'hr-reviewed')}>Mark HR reviewed</button>
+                    <button className="secondary" disabled={pendingRecordId === rec.id} type="button" onClick={() => updateStatus(rec, 'hr-reviewed')}>Mark HR reviewed</button>
                   )}
                 </div>
               </article>
             );
           }) : <EmptyStateCard title="No discipline records yet" message="Create a write-up above." />}
+          <div className="button-row table-pagination-row">
+            <button className="secondary" disabled={page <= 1} onClick={() => setPage((current) => Math.max(1, current - 1))} type="button">Previous</button>
+            <span>Page {page} of {totalPages} · {filteredRecords.length} matching records</span>
+            <button className="secondary" disabled={page >= totalPages} onClick={() => setPage((current) => Math.min(totalPages, current + 1))} type="button">Next</button>
+          </div>
         </div>
       </section>
     </section>

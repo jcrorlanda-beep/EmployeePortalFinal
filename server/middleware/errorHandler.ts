@@ -39,7 +39,7 @@ export function errorHandler(
 
   const error = err as Error & { status?: number; code?: string };
   const status = error.status ?? 500;
-  const message = error.message ?? 'Internal server error';
+  const message = status >= 500 ? 'Internal server error' : error.message ?? 'Request failed';
   const code = error.code ?? 'INTERNAL_ERROR';
 
   res.status(status).json({

@@ -3,6 +3,7 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { z } from 'zod';
 import { requireAuth } from '../middleware/auth';
+import { createRateLimitMiddleware } from '../middleware/rateLimit';
 import { prisma } from '../prisma/client';
 import { getJwtSecret } from '../utils/env';
 import { ok } from '../utils/response';
@@ -12,19 +13,24 @@ export const authRouter = Router();
 const JWT_EXPIRY = '8h';
 
 const loginSchema = z.object({
-  email: z.string().email(),
-  password: z.string().min(1),
+  email: z.string().trim().email().max(320),
+  password: z.string().min(1).max(256),
 });
 
 // POST /api/employee-portal/auth/login
-authRouter.post('/api/employee-portal/auth/login', async (req, res, next) => {
+authRouter.post('/api/employee-portal/auth/login', createRateLimitMiddleware({
+  keyPrefix: 'portal-login',
+  limit: 10,
+  windowMs: 60_000,
+}), async (req, res, next) => {
   try {
     const parsed = loginSchema.safeParse(req.body);
     if (!parsed.success) {
       const err = Object.assign(new Error('Validation failed'), { status: 400, code: 'VALIDATION_ERROR' });
       return next(err);
     }
-    const { email, password } = parsed.data;
+    const email = parsed.data.email.toLowerCase();
+    const { password } = parsed.data;
 
     const user = await prisma.portalUser.findUnique({ where: { email } });
     if (!user || !user.active) {

@@ -4,6 +4,7 @@ import { auditWrites } from '../middleware/auditWrites';
 import { prisma } from '../prisma/client';
 import { requireAuth } from '../middleware/auth';
 import { requirePermissionForMethods } from '../middleware/permissions';
+import { syncAttachmentReference } from '../services/attachmentPersistenceService';
 import { portalPermissions } from '../types/permissions';
 
 export const sopRouter = Router();
@@ -52,6 +53,15 @@ sopRouter.post('/api/employee-portal/sops', requireAuth, async (req, res, next) 
     const sop = await prisma.sopDocument.create({
       data: { ...rest, effectiveDate: effectiveDate ? new Date(effectiveDate) : undefined },
     });
+    await syncAttachmentReference({
+      request: req,
+      module: 'SOP',
+      entityType: 'sop_document',
+      entityId: sop.id,
+      referenceKey: 'sop-document',
+      referenceUrl: sop.fileReference,
+      description: `Reference document for SOP ${sop.title}.`,
+    });
     res.status(201).json({ success: true, data: sop });
   } catch (err) {
     next(err);
@@ -73,6 +83,15 @@ sopRouter.patch('/api/employee-portal/sops/:id', requireAuth, async (req, res, n
       where: { id: String(req.params.id) },
       data,
     });
+    await syncAttachmentReference({
+      request: req,
+      module: 'SOP',
+      entityType: 'sop_document',
+      entityId: sop.id,
+      referenceKey: 'sop-document',
+      referenceUrl: sop.fileReference,
+      description: `Reference document for SOP ${sop.title}.`,
+    });
     res.json({ success: true, data: sop });
   } catch (err) {
     next(err);
@@ -85,6 +104,15 @@ sopRouter.patch('/api/employee-portal/sops/:id/archive', requireAuth, async (req
     const sop = await prisma.sopDocument.update({
       where: { id: String(req.params.id) },
       data: { active: false, archivedAt: new Date(), status: 'Archived' },
+    });
+    await syncAttachmentReference({
+      request: req,
+      module: 'SOP',
+      entityType: 'sop_document',
+      entityId: sop.id,
+      referenceKey: 'sop-document',
+      referenceUrl: null,
+      description: `Reference document for SOP ${sop.title}.`,
     });
     res.json({ success: true, data: sop });
   } catch (err) {

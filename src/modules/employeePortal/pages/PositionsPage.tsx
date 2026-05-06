@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { FormEvent } from 'react';
 import { EmployeePortalStatusBadge } from '../components/EmployeePortalStatusBadge';
+import { usePortalPermissions } from '../hooks/usePortalPermissions';
 import { createAuditMetadata } from '../services/employeePortalApi';
 import { employeeService } from '../services/employeeService';
 import type { Department, EmployeeRole, EmployeeRoleDraft, PermissionGroup, Position, PositionDraft, SetupStatus } from '../types/employeeTypes';
@@ -27,6 +28,7 @@ const toRoleDraft = (role: EmployeeRole): EmployeeRoleDraft => ({
 });
 
 export function PositionsPage() {
+  const { hasPortalPermission, isAdmin } = usePortalPermissions();
   const [positions, setPositions] = useState<Position[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
   const [roles, setRoles] = useState<EmployeeRole[]>([]);
@@ -37,6 +39,9 @@ export function PositionsPage() {
   const [editingRoleId, setEditingRoleId] = useState<string | null>(null);
   const [formError, setFormError] = useState('');
   const [roleFormError, setRoleFormError] = useState('');
+  const [isSubmittingPosition, setIsSubmittingPosition] = useState(false);
+  const [isSubmittingRole, setIsSubmittingRole] = useState(false);
+  const [pendingDeactivateId, setPendingDeactivateId] = useState<string | null>(null);
 
   const departmentNameById = useMemo(
     () => new Map(departments.map((department) => [department.id, department.name])),
@@ -77,6 +82,8 @@ export function PositionsPage() {
     setRoleFormError('');
   };
 
+  const canManageRolePermissions = isAdmin || hasPortalPermission('admin.full');
+
   const startEdit = (position: Position) => {
     setDraft(toPositionDraft(position));
     setEditingId(position.id);
@@ -90,13 +97,20 @@ export function PositionsPage() {
   };
 
   const deactivatePosition = async (position: Position) => {
-    await employeeService.deactivatePosition(position.id, createAuditMetadata('mvp-admin', 'Phase 003 position deactivate'));
-    await refreshPositions();
-    if (editingId === position.id) resetForm();
+    if (pendingDeactivateId) return;
+    setPendingDeactivateId(position.id);
+    try {
+      await employeeService.deactivatePosition(position.id, createAuditMetadata('mvp-admin', 'Phase 003 position deactivate'));
+      await refreshPositions();
+      if (editingId === position.id) resetForm();
+    } finally {
+      setPendingDeactivateId(null);
+    }
   };
 
   const submitPosition = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (isSubmittingPosition) return;
     const normalizedDraft: PositionDraft = {
       ...draft,
       code: draft.code.trim().toUpperCase(),
@@ -111,14 +125,19 @@ export function PositionsPage() {
       return;
     }
 
-    if (editingId) {
-      await employeeService.updatePosition(editingId, normalizedDraft, createAuditMetadata('mvp-admin', 'Phase 003 position update'));
-    } else {
-      await employeeService.createPosition(normalizedDraft, createAuditMetadata('mvp-admin', 'Phase 003 position create'));
-    }
+    setIsSubmittingPosition(true);
+    try {
+      if (editingId) {
+        await employeeService.updatePosition(editingId, normalizedDraft, createAuditMetadata('mvp-admin', 'Phase 003 position update'));
+      } else {
+        await employeeService.createPosition(normalizedDraft, createAuditMetadata('mvp-admin', 'Phase 003 position create'));
+      }
 
-    await refreshPositions();
-    resetForm();
+      await refreshPositions();
+      resetForm();
+    } finally {
+      setIsSubmittingPosition(false);
+    }
   };
 
   const togglePermission = (permissionCode: string) => {
@@ -133,6 +152,7 @@ export function PositionsPage() {
 
   const submitRole = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (isSubmittingRole) return;
     const normalizedDraft: EmployeeRoleDraft = {
       ...roleDraft,
       code: roleDraft.code.trim().toUpperCase(),
@@ -146,15 +166,20 @@ export function PositionsPage() {
       return;
     }
 
-    if (editingRoleId) {
-      await employeeService.updateRole(editingRoleId, normalizedDraft, createAuditMetadata('mvp-admin', 'Phase 003 role update'));
-      await employeeService.updateRolePermissions(editingRoleId, normalizedDraft.permissions, createAuditMetadata('mvp-admin', 'Phase 003 role permission update'));
-    } else {
-      await employeeService.createRole(normalizedDraft, createAuditMetadata('mvp-admin', 'Phase 003 role create'));
-    }
+    setIsSubmittingRole(true);
+    try {
+      if (editingRoleId) {
+        await employeeService.updateRole(editingRoleId, normalizedDraft, createAuditMetadata('mvp-admin', 'Phase 003 role update'));
+        await employeeService.updateRolePermissions(editingRoleId, normalizedDraft.permissions, createAuditMetadata('mvp-admin', 'Phase 003 role permission update'));
+      } else {
+        await employeeService.createRole(normalizedDraft, createAuditMetadata('mvp-admin', 'Phase 003 role create'));
+      }
 
-    await refreshRoles();
-    resetRoleForm();
+      await refreshRoles();
+      resetRoleForm();
+    } finally {
+      setIsSubmittingRole(false);
+    }
   };
 
   return (
@@ -179,7 +204,7 @@ export function PositionsPage() {
             <label>Default role<select value={draft.defaultRole} onChange={(event) => setDraft({ ...draft, defaultRole: event.target.value })}>{roles.map((role) => <option key={role.id} value={role.id}>{role.name}</option>)}</select></label>
             <label className="full-width">Description<textarea value={draft.description} onChange={(event) => setDraft({ ...draft, description: event.target.value })} /></label>
           </div>
-          <div className="button-row"><button className="primary" type="submit">{editingId ? 'Save position' : 'Add position'}</button><button className="secondary" type="button" onClick={resetForm}>Clear</button></div>
+          <div className="button-row"><button className="primary" disabled={isSubmittingPosition} type="submit">{isSubmittingPosition ? 'Saving…' : editingId ? 'Save position' : 'Add position'}</button><button className="secondary" disabled={isSubmittingPosition} type="button" onClick={resetForm}>Clear</button></div>
         </form>
 
         <div className="cards single-column">
@@ -189,7 +214,7 @@ export function PositionsPage() {
               <p>Department: {position.departmentId ? departmentNameById.get(position.departmentId) ?? 'Unknown department' : 'Unassigned'}</p>
               <p>Default role: {roleNameById.get(position.defaultRole) ?? 'Employee'}</p>
               <p>{position.description || 'No description yet.'}</p>
-              <div className="button-row"><button className="secondary" type="button" onClick={() => startEdit(position)}>Edit position</button><button className="secondary danger" type="button" disabled={position.status === 'inactive'} onClick={() => deactivatePosition(position)}>Deactivate</button></div>
+              <div className="button-row"><button className="secondary" disabled={isSubmittingPosition || pendingDeactivateId === position.id} type="button" onClick={() => startEdit(position)}>Edit position</button><button className="secondary danger" type="button" disabled={position.status === 'inactive' || Boolean(pendingDeactivateId)} onClick={() => deactivatePosition(position)}>{pendingDeactivateId === position.id ? 'Deactivating…' : 'Deactivate'}</button></div>
             </article>
           ))}
         </div>
@@ -198,22 +223,29 @@ export function PositionsPage() {
       <section className="role-admin-section">
         <div>
           <h3>Role & permission administration foundation</h3>
-          <p className="lead">Permission groups are definitions only. They are stored on roles for future use but do not enforce application access yet.</p>
+          <p className={canManageRolePermissions ? 'lead' : 'service-note'}>
+            {canManageRolePermissions
+              ? 'Permission groups are definitions only. They are stored on roles for future use but do not enforce application access yet.'
+              : 'Role permission editing is limited to standalone portal administrators. You can still review position definitions here.'}
+          </p>
         </div>
         <div className="crud-layout narrow">
           <form className="form-card" onSubmit={submitRole}>
             <h3>{editingRoleId ? 'Edit role permissions' : 'Add role'}</h3>
             {roleFormError && <p className="form-error">{roleFormError}</p>}
             <div className="form-grid two-column">
-              <label>Role code *<input value={roleDraft.code} onChange={(event) => setRoleDraft({ ...roleDraft, code: event.target.value })} required /></label>
-              <label>Status<select value={roleDraft.status} onChange={(event) => setRoleDraft({ ...roleDraft, status: event.target.value as SetupStatus })}>{setupStatusOptions.map((status) => <option key={status} value={status}>{status}</option>)}</select></label>
-              <label className="full-width">Role name *<input value={roleDraft.name} onChange={(event) => setRoleDraft({ ...roleDraft, name: event.target.value })} required /></label>
-              <label className="full-width">Description<textarea value={roleDraft.description} onChange={(event) => setRoleDraft({ ...roleDraft, description: event.target.value })} /></label>
+              <label>Role code *<input disabled={!canManageRolePermissions} value={roleDraft.code} onChange={(event) => setRoleDraft({ ...roleDraft, code: event.target.value })} required /></label>
+              <label>Status<select disabled={!canManageRolePermissions} value={roleDraft.status} onChange={(event) => setRoleDraft({ ...roleDraft, status: event.target.value as SetupStatus })}>{setupStatusOptions.map((status) => <option key={status} value={status}>{status}</option>)}</select></label>
+              <label className="full-width">Role name *<input disabled={!canManageRolePermissions} value={roleDraft.name} onChange={(event) => setRoleDraft({ ...roleDraft, name: event.target.value })} required /></label>
+              <label className="full-width">Description<textarea disabled={!canManageRolePermissions} value={roleDraft.description} onChange={(event) => setRoleDraft({ ...roleDraft, description: event.target.value })} /></label>
             </div>
             <div className="permission-grid">
-              {permissionGroups.map((permission) => <label className="permission-option" key={permission.code}><input type="checkbox" checked={roleDraft.permissions.includes(permission.code)} onChange={() => togglePermission(permission.code)} /><span>{permission.code}</span></label>)}
+              {permissionGroups.map((permission) => <label className="permission-option" key={permission.code}><input disabled={!canManageRolePermissions} type="checkbox" checked={roleDraft.permissions.includes(permission.code)} onChange={() => togglePermission(permission.code)} /><span>{permission.code}</span></label>)}
             </div>
-            <div className="button-row"><button className="primary" type="submit">{editingRoleId ? 'Save role' : 'Add role'}</button><button className="secondary" type="button" onClick={resetRoleForm}>Clear</button></div>
+            <div className="button-row">
+              <button className="primary" disabled={!canManageRolePermissions || isSubmittingRole} title={!canManageRolePermissions ? 'Only portal administrators can update role permissions.' : undefined} type="submit">{isSubmittingRole ? 'Saving…' : editingRoleId ? 'Save role' : 'Add role'}</button>
+              <button className="secondary" disabled={isSubmittingRole} type="button" onClick={resetRoleForm}>Clear</button>
+            </div>
           </form>
 
           <div className="cards single-column">
@@ -222,7 +254,7 @@ export function PositionsPage() {
                 <div className="record-card-header"><div><span className="record-code">{role.code}</span><h3>{role.name}</h3></div><EmployeePortalStatusBadge status={role.status} /></div>
                 <p>{role.description}</p>
                 <div className="permission-badges">{role.permissions.map((permission) => <span className="permission-badge" key={permission}>{permission}</span>)}</div>
-                <button className="secondary" type="button" onClick={() => startRoleEdit(role)}>Edit role / permissions</button>
+                <button className="secondary" disabled={!canManageRolePermissions} title={!canManageRolePermissions ? 'Only portal administrators can edit role permissions.' : undefined} type="button" onClick={() => startRoleEdit(role)}>Edit role / permissions</button>
               </article>
             ))}
           </div>
