@@ -1,0 +1,5 @@
+import { useEffect, useState } from 'react';
+import { employeeService } from '../services/employeeService';
+import { createAuditMetadata } from '../services/employeePortalApi';
+import type { Department } from '../types/employeeTypes';
+export function DepartmentsPage() { const [departments, setDepartments] = useState<Department[]>([]); useEffect(() => { void employeeService.listDepartments().then(setDepartments); }, []); const addDepartment = async () => { const created = await employeeService.createDepartment({ name: `MVP Department ${departments.length + 1}`, active: true, notes: 'Audit-ready setup placeholder' }, createAuditMetadata()); setDepartments([created, ...departments]); }; return <section><h2>Departments</h2><button className="primary" onClick={addDepartment}>Add department</button><div className="cards">{departments.map((department) => <article className="record-card" key={department.id}><h3>{department.name}</h3><p>Manager: {department.managerName ?? 'Unassigned'}</p><p>Status: {department.active ? 'Active' : 'Inactive'}</p></article>)}</div></section>; }

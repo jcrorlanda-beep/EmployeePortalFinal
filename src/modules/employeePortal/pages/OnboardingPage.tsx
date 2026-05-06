@@ -1,0 +1,2 @@
+import { onboardingChecklists, onboardingSteps } from '../services/onboardingService';
+export function OnboardingPage() { return <section><h2>Onboarding Checklist System</h2><div className="cards">{onboardingChecklists.map((checklist) => <article className="record-card" key={checklist.id}><h3>{checklist.name}</h3><p>{checklist.active ? 'Active' : 'Inactive'} checklist</p><ul>{onboardingSteps.filter((step) => step.checklistId === checklist.id).map((step) => <li key={step.id}>{step.order}. {step.title} — {step.ownerRole}</li>)}</ul></article>)}</div></section>; }

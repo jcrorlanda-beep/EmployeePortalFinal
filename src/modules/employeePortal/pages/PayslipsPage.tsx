@@ -1,0 +1,2 @@
+import { payslips } from '../services/payrollService';
+export function PayslipsPage() { return <section><h2>Payslip Preview Foundation</h2><p className="lead">Preview-only payslips reference formula-produced line items and cannot be finalized.</p><div className="cards">{payslips.map((payslip) => <article className="record-card" key={payslip.id}><h3>{payslip.id}</h3><p>Employee: {payslip.employeeId}</p><p>Status: {payslip.status}</p><p>Line items: {payslip.lineItems.length}</p></article>)}</div></section>; }

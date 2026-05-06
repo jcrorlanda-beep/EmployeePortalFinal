@@ -1,0 +1,2 @@
+import { ptoRequests } from '../services/schedulingService';
+export function LeaveRequestsPage() { return <section><h2>PTO / Leave Requests</h2><div className="cards">{ptoRequests.map((request) => <article className="record-card" key={request.id}><h3>{request.startsOn} to {request.endsOn}</h3><p>Employee: {request.employeeId}</p><p>Status: {request.status}</p><p>{request.reason}</p></article>)}</div></section>; }

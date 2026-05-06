@@ -1,0 +1,2 @@
+import { toolDeposits } from '../services/equipmentService';
+export function ToolDepositsPage() { return <section><h2>Tool Deposit Management</h2><div className="cards">{toolDeposits.map((deposit) => <article className="record-card" key={deposit.id}><h3>{deposit.employeeId}</h3><p>Formula: {deposit.amountFormulaCode}</p><p>Balance: {deposit.balance}</p><p>Status: {deposit.status}</p></article>)}</div></section>; }

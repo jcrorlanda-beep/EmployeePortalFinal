@@ -1,0 +1,5 @@
+import { useEffect, useState } from 'react';
+import { employeeService } from '../services/employeeService';
+import { createAuditMetadata } from '../services/employeePortalApi';
+import type { Position } from '../types/employeeTypes';
+export function PositionsPage() { const [positions, setPositions] = useState<Position[]>([]); useEffect(() => { void employeeService.listPositions().then(setPositions); }, []); const addPosition = async () => { const created = await employeeService.createPosition({ title: `MVP Position ${positions.length + 1}`, departmentId: 'dept_shop', level: 'Configurable', active: true }, createAuditMetadata()); setPositions([created, ...positions]); }; return <section><h2>Positions & Roles</h2><p className="lead">Position records and portal roles are separate from any future TalyerOS login entry.</p><button className="primary" onClick={addPosition}>Add position</button><div className="cards">{positions.map((position) => <article className="record-card" key={position.id}><h3>{position.title}</h3><p>Department: {position.departmentId}</p><p>Level: {position.level}</p></article>)}</div></section>; }

@@ -1,0 +1,2 @@
+import { portalSafetyNotes } from '../utils/employeePortalConstants';
+export function EmployeePortalHeader() { return <header className="portal-header"><div><p className="eyebrow">Northeast Car Care Centre</p><h1>NCCC Employee Portal MVP</h1><p>Separate HR/workforce management portal prepared for future landing-page entry only.</p></div><ul>{portalSafetyNotes.map((note) => <li key={note}>{note}</li>)}</ul></header>; }

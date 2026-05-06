@@ -1,0 +1,2 @@
+import { inventoryItems, inventoryMovements } from '../services/inventoryService';
+export function InventoryPage() { return <section><h2>Inventory System</h2><div className="cards">{inventoryItems.map((item) => <article className="record-card" key={item.id}><h3>{item.name}</h3><p>SKU: {item.sku}</p><p>On hand: {item.quantityOnHand}</p><p>Movements: {inventoryMovements.filter((movement) => movement.inventoryItemId === item.id).length}</p></article>)}</div></section>; }

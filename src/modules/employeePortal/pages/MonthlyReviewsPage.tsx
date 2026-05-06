@@ -1,0 +1,2 @@
+import { performanceReviews, reviewTemplates } from '../services/reviewService';
+export function MonthlyReviewsPage() { return <section><h2>Monthly Performance Reviews</h2><div className="cards">{reviewTemplates.map((template) => <article className="record-card" key={template.id}><h3>{template.name}</h3><p>Editable items: {template.items.join(', ')}</p><p>Draft reviews: {performanceReviews.filter((review) => review.templateId === template.id).length}</p></article>)}</div></section>; }

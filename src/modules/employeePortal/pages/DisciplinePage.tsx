@@ -1,0 +1,2 @@
+import { disciplineCategories, disciplineRecords } from '../services/disciplineService';
+export function DisciplinePage() { return <section><h2>Write-Ups / Warnings</h2><p className="lead">Categories are editable setup records; warnings remain audit-ready drafts until issued.</p><div className="cards">{disciplineCategories.map((category) => <article className="record-card" key={category.id}><h3>{category.name}</h3><p>Records: {disciplineRecords.filter((record) => record.categoryId === category.id).length}</p></article>)}</div></section>; }
