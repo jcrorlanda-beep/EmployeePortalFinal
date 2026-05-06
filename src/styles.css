@@ -61,3 +61,36 @@ dd { margin: 0; }
 .permission-badges { display: flex; flex-wrap: wrap; gap: 6px; margin: 12px 0; }
 .permission-badge { background: #edf7fb; border: 1px solid #cfe7f0; border-radius: 999px; color: #155d76; font-size: .76rem; font-weight: 800; padding: 5px 8px; }
 .status-badge-phase-003-admin { background: #e8f7ee; color: #146333; }
+<<<<<<< ours
+<<<<<<< ours
+<<<<<<< ours
+<<<<<<< ours
+=======
+=======
+>>>>>>> theirs
+=======
+>>>>>>> theirs
+=======
+>>>>>>> theirs
+.step-editor { border-top: 1px solid #dce7f1; display: grid; gap: 14px; margin-top: 18px; padding-top: 18px; }
+.step-editor-row { background: #f8fbfd; border: 1px solid #dce7f1; border-radius: 16px; display: grid; gap: 12px; grid-template-columns: minmax(180px, 1fr) minmax(120px, .6fr) minmax(90px, .35fr) minmax(90px, .35fr); padding: 14px; }
+.step-editor-row label, .progress-step label { color: #314159; display: grid; font-size: .86rem; font-weight: 800; gap: 6px; }
+.step-editor-row input, .step-editor-row textarea, .progress-step input, .progress-step select { border: 1px solid #ccd8e6; border-radius: 10px; color: #172033; font: inherit; padding: 10px 12px; }
+.inline-check { align-items: center; display: flex !important; flex-direction: row; }
+.align-end { align-self: end; margin-bottom: 0; }
+.progress-track { background: #e8eef5; border-radius: 999px; height: 12px; overflow: hidden; }
+.progress-track span { background: linear-gradient(90deg, #166b8f, #24a878); display: block; height: 100%; }
+.progress-step { border-top: 1px solid #e2ebf4; display: grid; gap: 10px; grid-template-columns: minmax(180px, 1fr) minmax(150px, .45fr); padding: 14px 0; }
+.progress-step input { grid-column: 1 / -1; }
+.status-badge-phase-004-onboarding { background: #fff1df; color: #8a4b00; }
+@media (max-width: 1100px) { .step-editor-row, .progress-step { grid-template-columns: 1fr; } }
+<<<<<<< ours
+<<<<<<< ours
+<<<<<<< ours
+>>>>>>> theirs
+=======
+>>>>>>> theirs
+=======
+>>>>>>> theirs
+=======
+>>>>>>> theirs

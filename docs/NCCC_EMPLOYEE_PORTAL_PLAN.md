@@ -20,7 +20,23 @@ The NCCC Employee Portal is a standalone HR and workforce management MVP for Nor
 | 001 | Foundation, split files, pages, services, types, docs, Prisma-ready schema | Complete |
 | 002 | Employee CRUD | Complete with usable frontend create/update forms, employee list, search/filtering, status badges, and profile summary card |
 | 003 | Departments / positions / roles | Complete with department codes/leads/sort order, position codes/default roles, configurable roles, and permission group foundations |
+<<<<<<< ours
+<<<<<<< ours
+<<<<<<< ours
+<<<<<<< ours
 | 004 | Onboarding checklist | Complete foundation |
+=======
+| 004 | Onboarding checklist | Complete with template CRUD foundation, step editor, employee checklist assignment, progress tracking, and supervisor approval placeholder |
+>>>>>>> theirs
+=======
+| 004 | Onboarding checklist | Complete with template CRUD foundation, step editor, employee checklist assignment, progress tracking, and supervisor approval placeholder |
+>>>>>>> theirs
+=======
+| 004 | Onboarding checklist | Complete with template CRUD foundation, step editor, employee checklist assignment, progress tracking, and supervisor approval placeholder |
+>>>>>>> theirs
+=======
+| 004 | Onboarding checklist | Complete with template CRUD foundation, step editor, employee checklist assignment, progress tracking, and supervisor approval placeholder |
+>>>>>>> theirs
 | 005 | Training hub | Complete foundation |
 | 006 | SOP document library | Complete foundation |
 | 007 | Timekeeping | Complete foundation |
@@ -60,6 +76,22 @@ The NCCC Employee Portal is a standalone HR and workforce management MVP for Nor
 - Services are mock-safe and database-ready.
 - Phase 002 added employee CRUD frontend foundations, department setup, position setup, and audit placeholder events for create/update actions.
 - Phase 003 expanded department/position administration and added configurable roles plus permission group definitions without auth enforcement.
+<<<<<<< ours
+<<<<<<< ours
+<<<<<<< ours
+<<<<<<< ours
+=======
+- Phase 004 added onboarding template, employee checklist, progress tracking, and supervisor approval placeholder workflows without auth enforcement.
+>>>>>>> theirs
+=======
+- Phase 004 added onboarding template, employee checklist, progress tracking, and supervisor approval placeholder workflows without auth enforcement.
+>>>>>>> theirs
+=======
+- Phase 004 added onboarding template, employee checklist, progress tracking, and supervisor approval placeholder workflows without auth enforcement.
+>>>>>>> theirs
+=======
+- Phase 004 added onboarding template, employee checklist, progress tracking, and supervisor approval placeholder workflows without auth enforcement.
+>>>>>>> theirs
 - Database schema contains all requested model names.
 - TalyerOS integration remains inactive.
 - Build command: `npm run build`.
@@ -84,3 +116,44 @@ The NCCC Employee Portal is a standalone HR and workforce management MVP for Nor
 - Placeholder audit events were added for department deactivation, position deactivation, role create/update, and role permission updates.
 - No TalyerOS integration, backend auth changes, payroll formula changes, package changes, or Prisma migrations were added.
 - Stop after Phase 003; Phase 004 should begin onboarding checklist implementation when requested.
+<<<<<<< ours
+<<<<<<< ours
+<<<<<<< ours
+<<<<<<< ours
+=======
+=======
+>>>>>>> theirs
+=======
+>>>>>>> theirs
+=======
+>>>>>>> theirs
+
+
+## Phase 004 Notes
+
+- Onboarding template administration now supports name, description, target role, optional target department, active/inactive status, and editable steps.
+- Template steps now include title, description, category, required flag, estimated minutes, and sort order.
+- Employee onboarding checklists can be assigned from templates and tracked in session-scoped service state.
+- Step progress supports Not Started, In Progress, Completed, and Skipped statuses with notes and completion timestamps.
+- Supervisor approval is a placeholder action only; no login/auth permission enforcement was added.
+- Onboarding completion does not automatically activate employees.
+- Placeholder audit events were added for template create/update, checklist assignment, step progress updates, and approval.
+- No TalyerOS integration, payroll formula changes, package changes, or Prisma migrations were added.
+- Stop after Phase 004; Phase 005 should begin Training & Learning Hub implementation when requested.
+<<<<<<< ours
+<<<<<<< ours
+<<<<<<< ours
+>>>>>>> theirs
+=======
+>>>>>>> theirs
+=======
+>>>>>>> theirs
+=======
+
+## Phase 004 Conflict Recovery Notes
+
+- The Phase 004 recovery pass inspected the onboarding page, onboarding service, onboarding types, audit log service, shared styles, and Employee Portal docs for merge conflict markers.
+- Phase 001–003 behavior for employee CRUD, department administration, position administration, role setup, and permission group foundations was preserved.
+- Phase 004 remains scoped to onboarding templates, employee onboarding assignments, checklist progress/status display, and supervisor approval placeholder workflows only.
+- No localStorage-first architecture, TalyerOS integration, auth enforcement, payroll formula changes, package changes, or Prisma migrations were added during recovery.
+>>>>>>> theirs
