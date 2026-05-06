@@ -1,0 +1,2 @@
+import { scheduleInstances, scheduleTemplates } from '../services/schedulingService';
+export function SchedulingPage() { return <section><h2>Employee Scheduling</h2><div className="cards">{scheduleTemplates.map((template) => <article className="record-card" key={template.id}><h3>{template.name}</h3><p>{template.startTime} - {template.endTime}</p><p>Published instances: {scheduleInstances.filter((instance) => instance.templateId === template.id).length}</p></article>)}</div></section>; }

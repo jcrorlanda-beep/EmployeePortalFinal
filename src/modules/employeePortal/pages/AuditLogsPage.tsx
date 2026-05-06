@@ -1,0 +1,2 @@
+import { useAuditLogs } from '../hooks/useAuditLogs';
+export function AuditLogsPage() { const { logs } = useAuditLogs(); return <section><h2>Central Audit Logs</h2><div className="table-card"><table><thead><tr><th>Time</th><th>Module</th><th>Action</th><th>Actor</th><th>Summary</th></tr></thead><tbody>{logs.map((log) => <tr key={log.id}><td>{log.createdAt}</td><td>{log.module}</td><td>{log.action}</td><td>{log.actor}</td><td>{log.summary}</td></tr>)}</tbody></table></div></section>; }

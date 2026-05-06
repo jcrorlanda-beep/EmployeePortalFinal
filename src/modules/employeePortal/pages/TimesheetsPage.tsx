@@ -1,0 +1,2 @@
+import { timesheetRecords } from '../services/timekeepingService';
+export function TimesheetsPage() { return <section><h2>Timesheet Review</h2><div className="cards">{timesheetRecords.map((record) => <article className="record-card" key={record.id}><h3>{record.periodStart} to {record.periodEnd}</h3><p>Regular: {record.regularHours}h · OT formula input: {record.overtimeHours}h</p><p>Status: {record.status}</p></article>)}</div></section>; }

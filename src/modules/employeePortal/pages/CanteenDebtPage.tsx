@@ -1,0 +1,2 @@
+import { canteenTransactions, employeeDebtLedgers } from '../services/canteenService';
+export function CanteenDebtPage() { return <section><h2>Canteen Debt / Paycut Tracking</h2><div className="cards">{employeeDebtLedgers.map((ledger) => <article className="record-card" key={ledger.id}><h3>{ledger.employeeId}</h3><p>Balance: {ledger.balance}</p><p>Formula: {ledger.formulaCode}</p><p>Transactions: {canteenTransactions.filter((transaction) => transaction.employeeId === ledger.employeeId).length}</p></article>)}</div></section>; }

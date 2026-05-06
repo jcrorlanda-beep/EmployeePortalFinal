@@ -1,0 +1,2 @@
+import { payrollFormulas } from '../services/formulaService';
+export function FormulaEnginePage() { return <section><h2>Formula Engine Foundation</h2><p className="lead">Formula records store configurable expressions; arbitrary execution is deferred to a safe evaluator.</p><div className="cards">{payrollFormulas.map((formula) => <article className="record-card" key={formula.id}><h3>{formula.name}</h3><p>Code: {formula.code}</p><code>{formula.expression}</code></article>)}</div></section>; }
