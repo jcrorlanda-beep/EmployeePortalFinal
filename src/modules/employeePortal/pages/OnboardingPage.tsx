@@ -1,22 +1,10 @@
-<<<<<<< ours
-<<<<<<< ours
-<<<<<<< ours
-<<<<<<< ours
-import { onboardingChecklists, onboardingSteps } from '../services/onboardingService';
-export function OnboardingPage() { return <section><h2>Onboarding Checklist System</h2><div className="cards">{onboardingChecklists.map((checklist) => <article className="record-card" key={checklist.id}><h3>{checklist.name}</h3><p>{checklist.active ? 'Active' : 'Inactive'} checklist</p><ul>{onboardingSteps.filter((step) => step.checklistId === checklist.id).map((step) => <li key={step.id}>{step.order}. {step.title} — {step.ownerRole}</li>)}</ul></article>)}</div></section>; }
-=======
-=======
->>>>>>> theirs
-=======
->>>>>>> theirs
-=======
->>>>>>> theirs
 import { useEffect, useMemo, useState } from 'react';
 import type { FormEvent } from 'react';
+import { EmptyStateCard } from '../components/EmptyStateCard';
 import { EmployeePortalStatusBadge } from '../components/EmployeePortalStatusBadge';
 import { createAuditMetadata } from '../services/employeePortalApi';
 import { employeeService } from '../services/employeeService';
-import { onboardingService } from '../services/onboardingService';
+import { getOnboardingServiceStatus, onboardingService } from '../services/onboardingService';
 import type { Department, Employee, EmployeeRole } from '../types/employeeTypes';
 import type {
   EmployeeOnboardingChecklist,
@@ -80,6 +68,10 @@ export function OnboardingPage() {
   const [assignEmployeeId, setAssignEmployeeId] = useState('');
   const [assignTemplateId, setAssignTemplateId] = useState('');
   const [formError, setFormError] = useState('');
+  const [loadError, setLoadError] = useState('');
+  const [isLoading, setIsLoading] = useState(true);
+  const [serviceMode, setServiceMode] = useState<'api' | 'fallback'>('fallback');
+  const [serviceMessage, setServiceMessage] = useState('Using local fallback data until the backend is available.');
 
   const templateById = useMemo(() => new Map(templates.map((template) => [template.id, template])), [templates]);
   const employeeById = useMemo(() => new Map(employees.map((employee) => [employee.id, `${employee.firstName} ${employee.lastName}`])), [employees]);
@@ -92,6 +84,9 @@ export function OnboardingPage() {
 
   const refreshOnboarding = async () => {
     const [templateList, checklistList] = await Promise.all([onboardingService.listTemplates(), onboardingService.listEmployeeChecklists()]);
+    const status = getOnboardingServiceStatus();
+    setServiceMode(status.mode);
+    setServiceMessage(status.message ?? '');
     setTemplates(templateList);
     setChecklists(checklistList);
     setAssignTemplateId((current) => current || templateList[0]?.id || '');
@@ -99,22 +94,33 @@ export function OnboardingPage() {
   };
 
   useEffect(() => {
-    void Promise.all([
-      onboardingService.listTemplates(),
-      onboardingService.listEmployeeChecklists(),
-      employeeService.listEmployees(),
-      employeeService.listDepartments(),
-      employeeService.listRoles(),
-    ]).then(([templateList, checklistList, employeeList, departmentList, roleList]) => {
-      setTemplates(templateList);
-      setChecklists(checklistList);
-      setEmployees(employeeList);
-      setDepartments(departmentList);
-      setRoles(roleList);
-      setAssignEmployeeId(employeeList[0]?.id ?? '');
-      setAssignTemplateId(templateList[0]?.id ?? '');
-      setSelectedChecklistId(checklistList[0]?.id ?? null);
-    });
+    void (async () => {
+      try {
+        const [templateList, checklistList, employeeList, departmentList, roleList] = await Promise.all([
+          onboardingService.listTemplates(),
+          onboardingService.listEmployeeChecklists(),
+          employeeService.listEmployees(),
+          employeeService.listDepartments(),
+          employeeService.listRoles(),
+        ]);
+        const status = getOnboardingServiceStatus();
+        setServiceMode(status.mode);
+        setServiceMessage(status.message ?? '');
+        setTemplates(templateList);
+        setChecklists(checklistList);
+        setEmployees(employeeList);
+        setDepartments(departmentList);
+        setRoles(roleList);
+        setAssignEmployeeId(employeeList[0]?.id ?? '');
+        setAssignTemplateId(templateList[0]?.id ?? '');
+        setSelectedChecklistId(checklistList[0]?.id ?? null);
+        setLoadError('');
+      } catch (error) {
+        setLoadError(error instanceof Error ? error.message : 'Unable to load onboarding data.');
+      } finally {
+        setIsLoading(false);
+      }
+    })();
   }, []);
 
   const resetTemplateForm = () => {
@@ -193,10 +199,14 @@ export function OnboardingPage() {
       <div className="page-heading-row">
         <div>
           <h2>Onboarding Checklist System</h2>
-          <p className="lead">Create onboarding templates, assign them to new hires, track checklist progress, and capture supervisor approval placeholders without activating auth enforcement.</p>
+          <p className="lead">Create onboarding templates, assign them to new hires, track checklist progress, and capture supervisor approval placeholders with live API persistence when the backend is available.</p>
         </div>
         <EmployeePortalStatusBadge status="Phase 004 onboarding" />
       </div>
+
+      {loadError && <p className="form-error">{loadError}</p>}
+      {serviceMode === 'fallback' && !loadError && <p className="service-note">Backend unavailable. Using local fallback onboarding data. {serviceMessage}</p>}
+      {serviceMode === 'api' && !loadError && <p className="service-note success">Live API mode is active for onboarding templates and checklists.</p>}
 
       <div className="crud-layout narrow">
         <form className="form-card" onSubmit={submitTemplate}>
@@ -228,7 +238,7 @@ export function OnboardingPage() {
         </form>
 
         <div className="cards single-column">
-          {templates.map((template) => (
+          {isLoading ? <EmptyStateCard title="Loading onboarding templates" message="Fetching onboarding templates and checklist state." /> : templates.length ? templates.map((template) => (
             <article className="record-card" key={template.id}>
               <div className="record-card-header"><h3>{template.name}</h3><EmployeePortalStatusBadge status={template.status} /></div>
               <p>{template.description}</p>
@@ -237,7 +247,7 @@ export function OnboardingPage() {
               <p>Steps: {template.steps.length}</p>
               <button className="secondary" type="button" onClick={() => startEditTemplate(template)}>Edit template</button>
             </article>
-          ))}
+          )) : <EmptyStateCard title="No onboarding templates yet" message="Add a template above to begin assigning onboarding checklists." />}
         </div>
       </div>
 
@@ -255,7 +265,7 @@ export function OnboardingPage() {
 
       <section className="crud-layout narrow">
         <div className="cards single-column">
-          {checklists.map((checklist) => {
+          {isLoading ? <EmptyStateCard title="Loading onboarding assignments" message="Fetching assigned onboarding checklists." /> : checklists.length ? checklists.map((checklist) => {
             const template = templateById.get(checklist.templateId);
             return (
               <article className="record-card" key={checklist.id}>
@@ -267,7 +277,7 @@ export function OnboardingPage() {
                 <button className="secondary" type="button" onClick={() => setSelectedChecklistId(checklist.id)}>View progress</button>
               </article>
             );
-          })}
+          }) : <EmptyStateCard title="No onboarding assignments yet" message="Assign a template to an employee to begin progress tracking." />}
         </div>
 
         <aside className="summary-card">
@@ -298,13 +308,3 @@ export function OnboardingPage() {
     </section>
   );
 }
-<<<<<<< ours
-<<<<<<< ours
-<<<<<<< ours
->>>>>>> theirs
-=======
->>>>>>> theirs
-=======
->>>>>>> theirs
-=======
->>>>>>> theirs

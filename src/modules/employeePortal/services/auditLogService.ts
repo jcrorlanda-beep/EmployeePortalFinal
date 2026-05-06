@@ -12,34 +12,28 @@ export type EmployeePortalAuditEvent =
   | 'position.deactivated'
   | 'role.created'
   | 'role.updated'
-<<<<<<< ours
-<<<<<<< ours
-<<<<<<< ours
-<<<<<<< ours
-  | 'role.permissions.updated';
-=======
-=======
->>>>>>> theirs
-=======
->>>>>>> theirs
-=======
->>>>>>> theirs
   | 'role.permissions.updated'
   | 'onboarding.template.created'
   | 'onboarding.template.updated'
   | 'onboarding.assigned'
   | 'onboarding.step.updated'
-  | 'onboarding.approved';
-<<<<<<< ours
-<<<<<<< ours
-<<<<<<< ours
->>>>>>> theirs
-=======
->>>>>>> theirs
-=======
->>>>>>> theirs
-=======
->>>>>>> theirs
+  | 'onboarding.approved'
+  | 'training.module.created'
+  | 'training.module.updated'
+  | 'training.assigned'
+  | 'training.progress.updated'
+  | 'training.completed'
+  | 'training.certification.issued'
+  | 'sop.created'
+  | 'sop.updated'
+  | 'sop.acknowledged'
+  | 'sop.archived'
+  | 'attendance.clocked'
+  | 'attendance.correction.requested'
+  | 'timesheet.created'
+  | 'timesheet.submitted'
+  | 'timesheet.approved'
+  | 'timesheet.correction.requested';
 
 export const auditLogEntries: AuditLogEntry[] = [
   { id: 'audit_001', module: 'Employee', action: 'create', actor: 'mvp-admin', entityId: 'emp_001', summary: 'Seeded employee record for MVP preview.', createdAt: '2026-05-06T00:00:00.000Z' },
@@ -58,52 +52,32 @@ const moduleLabelByEvent: Record<EmployeePortalAuditEvent, string> = {
   'role.created': 'EmployeeRole',
   'role.updated': 'EmployeeRole',
   'role.permissions.updated': 'EmployeeRole',
-<<<<<<< ours
-<<<<<<< ours
-<<<<<<< ours
-<<<<<<< ours
-=======
-=======
->>>>>>> theirs
-=======
->>>>>>> theirs
-=======
->>>>>>> theirs
   'onboarding.template.created': 'Onboarding',
   'onboarding.template.updated': 'Onboarding',
   'onboarding.assigned': 'Onboarding',
   'onboarding.step.updated': 'Onboarding',
   'onboarding.approved': 'Onboarding',
-<<<<<<< ours
-<<<<<<< ours
-<<<<<<< ours
->>>>>>> theirs
-=======
->>>>>>> theirs
-=======
->>>>>>> theirs
-=======
->>>>>>> theirs
+  'training.module.created': 'Training',
+  'training.module.updated': 'Training',
+  'training.assigned': 'Training',
+  'training.progress.updated': 'Training',
+  'training.completed': 'Training',
+  'training.certification.issued': 'Training',
+  'sop.created': 'SOP',
+  'sop.updated': 'SOP',
+  'sop.acknowledged': 'SOP',
+  'sop.archived': 'SOP',
+  'attendance.clocked': 'Timekeeping',
+  'attendance.correction.requested': 'Timekeeping',
+  'timesheet.created': 'Timesheet',
+  'timesheet.submitted': 'Timesheet',
+  'timesheet.approved': 'Timesheet',
+  'timesheet.correction.requested': 'Timesheet',
 };
 
 const actionByEvent = (event: EmployeePortalAuditEvent): AuditLogEntry['action'] => {
-  if (event.endsWith('.created')) return 'create';
-<<<<<<< ours
-<<<<<<< ours
-<<<<<<< ours
-<<<<<<< ours
-=======
-  if (event.endsWith('.approved')) return 'approve';
->>>>>>> theirs
-=======
-  if (event.endsWith('.approved')) return 'approve';
->>>>>>> theirs
-=======
-  if (event.endsWith('.approved')) return 'approve';
->>>>>>> theirs
-=======
-  if (event.endsWith('.approved')) return 'approve';
->>>>>>> theirs
+  if (event.endsWith('.created') || event.endsWith('.assigned')) return 'create';
+  if (event.endsWith('.approved') || event.endsWith('.issued') || event.endsWith('.acknowledged')) return 'approve';
   return 'update';
 };
 

@@ -5,6 +5,9 @@ button { font: inherit; }
 .portal-header { background: linear-gradient(135deg, #0f2742, #185e77); color: white; padding: 32px; display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(280px, .8fr); gap: 24px; }
 .portal-header h1 { margin: 4px 0 12px; font-size: clamp(2rem, 4vw, 3.6rem); }
 .portal-header ul { margin: 0; padding-left: 20px; line-height: 1.7; }
+.header-user-strip { align-items: center; display: flex; flex-wrap: wrap; gap: 10px; margin-top: 16px; }
+.header-user-badge { background: rgba(184, 243, 255, .16); border: 1px solid rgba(184, 243, 255, .32); border-radius: 999px; color: #d8fbff; font-size: .78rem; font-weight: 800; padding: 6px 10px; }
+.header-user-copy { color: #dbe8f6; font-size: .88rem; font-weight: 700; }
 .eyebrow { text-transform: uppercase; letter-spacing: .14em; font-weight: 700; color: #b8f3ff; }
 .portal-body { display: grid; grid-template-columns: 280px minmax(0, 1fr); gap: 24px; padding: 24px; }
 .portal-nav { position: sticky; top: 16px; align-self: start; display: grid; gap: 8px; background: white; border-radius: 20px; padding: 16px; box-shadow: 0 12px 40px rgba(15, 39, 66, .08); max-height: calc(100vh - 32px); overflow: auto; }
@@ -40,6 +43,8 @@ code { background: #f3f6fb; padding: 4px 6px; border-radius: 6px; }
 .secondary, .link-button { border: 1px solid #bed0df; background: white; color: #166b8f; border-radius: 12px; cursor: pointer; font-weight: 800; padding: 10px 14px; }
 .link-button { border: 0; padding: 6px 8px; text-decoration: underline; }
 .form-error { background: #fff1f0; border: 1px solid #ffc9c4; border-radius: 12px; color: #9b211b; font-weight: 800; padding: 10px 12px; }
+.service-note { background: #eef6ff; border: 1px solid #c9ddf4; border-radius: 12px; color: #1f4f82; font-weight: 700; padding: 10px 12px; }
+.service-note.success { background: #e9f8ee; border-color: #bde5ca; color: #146333; }
 .filter-card { display: grid; grid-template-columns: minmax(240px, 1fr) repeat(2, minmax(180px, .5fr)); gap: 14px; }
 .summary-name { color: #0f2742; font-size: 1.5rem; font-weight: 900; margin: 0 0 8px; }
 dl { display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 8px 12px; }
@@ -61,36 +66,34 @@ dd { margin: 0; }
 .permission-badges { display: flex; flex-wrap: wrap; gap: 6px; margin: 12px 0; }
 .permission-badge { background: #edf7fb; border: 1px solid #cfe7f0; border-radius: 999px; color: #155d76; font-size: .76rem; font-weight: 800; padding: 5px 8px; }
 .status-badge-phase-003-admin { background: #e8f7ee; color: #146333; }
-<<<<<<< ours
-<<<<<<< ours
-<<<<<<< ours
-<<<<<<< ours
-=======
-=======
->>>>>>> theirs
-=======
->>>>>>> theirs
-=======
->>>>>>> theirs
 .step-editor { border-top: 1px solid #dce7f1; display: grid; gap: 14px; margin-top: 18px; padding-top: 18px; }
 .step-editor-row { background: #f8fbfd; border: 1px solid #dce7f1; border-radius: 16px; display: grid; gap: 12px; grid-template-columns: minmax(180px, 1fr) minmax(120px, .6fr) minmax(90px, .35fr) minmax(90px, .35fr); padding: 14px; }
 .step-editor-row label, .progress-step label { color: #314159; display: grid; font-size: .86rem; font-weight: 800; gap: 6px; }
-.step-editor-row input, .step-editor-row textarea, .progress-step input, .progress-step select { border: 1px solid #ccd8e6; border-radius: 10px; color: #172033; font: inherit; padding: 10px 12px; }
+.step-editor-row input, .step-editor-row textarea, .progress-step input, .progress-step select, .progress-step textarea { border: 1px solid #ccd8e6; border-radius: 10px; color: #172033; font: inherit; padding: 10px 12px; }
 .inline-check { align-items: center; display: flex !important; flex-direction: row; }
 .align-end { align-self: end; margin-bottom: 0; }
 .progress-track { background: #e8eef5; border-radius: 999px; height: 12px; overflow: hidden; }
 .progress-track span { background: linear-gradient(90deg, #166b8f, #24a878); display: block; height: 100%; }
 .progress-step { border-top: 1px solid #e2ebf4; display: grid; gap: 10px; grid-template-columns: minmax(180px, 1fr) minmax(150px, .45fr); padding: 14px 0; }
-.progress-step input { grid-column: 1 / -1; }
+.progress-step input, .progress-step textarea { grid-column: 1 / -1; }
+.progress-step textarea { min-height: 78px; resize: vertical; }
 .status-badge-phase-004-onboarding { background: #fff1df; color: #8a4b00; }
 @media (max-width: 1100px) { .step-editor-row, .progress-step { grid-template-columns: 1fr; } }
-<<<<<<< ours
-<<<<<<< ours
-<<<<<<< ours
->>>>>>> theirs
-=======
->>>>>>> theirs
-=======
->>>>>>> theirs
-=======
->>>>>>> theirs
+.training-page .summary-card .primary { margin-bottom: 0; }
+.training-filter-card { grid-template-columns: repeat(2, minmax(180px, 1fr)); }
+.training-card-footer { align-items: center; display: flex; flex-wrap: wrap; gap: 10px; justify-content: space-between; }
+.training-assignment-form { grid-template-columns: minmax(220px, 1fr) minmax(220px, 1fr) minmax(160px, .5fr); }
+.training-progress-editor { margin: 12px 0; }
+.muted-text { color: #6a7688; font-size: .86rem; font-weight: 800; }
+.compact-buttons { margin-top: 0; }
+.training-module-card { display: grid; gap: 10px; }
+.training-meta-grid { display: grid; gap: 8px; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.training-meta-grid span { background: #f3f8fb; border: 1px solid #d8e8f0; border-radius: 10px; color: #244257; font-size: .78rem; font-weight: 800; padding: 8px; text-align: center; }
+.certification-pill { background: #e8f7ee; border: 1px solid #bde5ca; border-radius: 999px; color: #146333; display: inline-flex; font-size: .78rem; font-weight: 900; padding: 6px 10px; width: fit-content; }
+.status-badge-phase-005-training { background: #e7f1ff; color: #1554a2; }
+.status-badge-phase-006-sop, .status-badge-acknowledgement-required, .status-badge-acknowledged { background: #eef2ff; color: #3730a3; }
+.status-badge-draft { background: #f4f6f8; color: #5b6675; }
+.status-badge-active, .status-badge-completed, .status-badge-waived { background: #e8f7ee; color: #146333; }
+.status-badge-archived, .status-badge-failed { background: #fff1f0; color: #9b211b; }
+.status-badge-assigned, .status-badge-in-progress { background: #fff8e5; color: #7a4d00; }
+@media (max-width: 1100px) { .training-filter-card, .training-meta-grid { grid-template-columns: 1fr; } }

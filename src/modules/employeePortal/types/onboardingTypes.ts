@@ -1,16 +1,3 @@
-<<<<<<< ours
-<<<<<<< ours
-<<<<<<< ours
-<<<<<<< ours
-export interface OnboardingChecklist { id: string; name: string; positionId?: string; active: boolean; }
-export interface OnboardingStep { id: string; checklistId: string; title: string; ownerRole: string; required: boolean; order: number; }
-=======
-=======
->>>>>>> theirs
-=======
->>>>>>> theirs
-=======
->>>>>>> theirs
 export type OnboardingTemplateStatus = 'active' | 'inactive';
 export type EmployeeOnboardingStatus = 'assigned' | 'in-progress' | 'pending-approval' | 'approved';
 export type OnboardingStepProgressStatus = 'Not Started' | 'In Progress' | 'Completed' | 'Skipped';
@@ -55,13 +42,3 @@ export interface EmployeeOnboardingChecklist {
 }
 
 export type OnboardingTemplateDraft = Omit<OnboardingTemplate, 'id'>;
-<<<<<<< ours
-<<<<<<< ours
-<<<<<<< ours
->>>>>>> theirs
-=======
->>>>>>> theirs
-=======
->>>>>>> theirs
-=======
->>>>>>> theirs

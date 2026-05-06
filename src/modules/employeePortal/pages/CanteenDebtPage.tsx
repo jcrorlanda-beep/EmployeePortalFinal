@@ -1,2 +1,186 @@
-import { canteenTransactions, employeeDebtLedgers } from '../services/canteenService';
-export function CanteenDebtPage() { return <section><h2>Canteen Debt / Paycut Tracking</h2><div className="cards">{employeeDebtLedgers.map((ledger) => <article className="record-card" key={ledger.id}><h3>{ledger.employeeId}</h3><p>Balance: {ledger.balance}</p><p>Formula: {ledger.formulaCode}</p><p>Transactions: {canteenTransactions.filter((transaction) => transaction.employeeId === ledger.employeeId).length}</p></article>)}</div></section>; }
+import { useEffect, useState } from 'react';
+import type { FormEvent } from 'react';
+import { EmployeePortalStatusBadge } from '../components/EmployeePortalStatusBadge';
+import { EmptyStateCard } from '../components/EmptyStateCard';
+import { employeeService } from '../services/employeeService';
+import { canteenService, getCanteenServiceStatus } from '../services/canteenService';
+import type { Employee } from '../types/employeeTypes';
+import type { CanteenDeductionType, CanteenTransaction, CanteenTransactionStatus, EmployeeDebtLedger } from '../types/canteenTypes';
+
+const deductionTypeOptions: CanteenDeductionType[] = ['cash', 'salary-deduction'];
+
+const empName = (employees: Employee[], id: string) => {
+  const emp = employees.find((e) => e.id === id);
+  return emp ? `${emp.firstName} ${emp.lastName}` : id;
+};
+
+export function CanteenDebtPage() {
+  const [transactions, setTransactions] = useState<CanteenTransaction[]>([]);
+  const [ledgers, setLedgers] = useState<EmployeeDebtLedger[]>([]);
+  const [employees, setEmployees] = useState<Employee[]>([]);
+  const [empId, setEmpId] = useState('');
+  const [amount, setAmount] = useState(0);
+  const [description, setDescription] = useState('');
+  const [transactionDate, setTransactionDate] = useState('');
+  const [deductionType, setDeductionType] = useState<CanteenDeductionType>('salary-deduction');
+  const [formulaCode, setFormulaCode] = useState('CONFIGURED_CANTEEN_DEDUCTION');
+  const [formError, setFormError] = useState('');
+  const [loadError, setLoadError] = useState('');
+  const [isLoading, setIsLoading] = useState(true);
+
+  const refresh = async () => {
+    const [txList, ledgerList] = await Promise.all([canteenService.listTransactions(), canteenService.listLedgers()]);
+    setTransactions(txList);
+    setLedgers(ledgerList);
+  };
+
+  useEffect(() => {
+    void Promise.all([
+      canteenService.listTransactions(),
+      canteenService.listLedgers(),
+      employeeService.listEmployees(),
+    ]).then(([txList, ledgerList, emps]) => {
+      setTransactions(txList);
+      setLedgers(ledgerList);
+      setEmployees(emps);
+      setEmpId(emps[0]?.id ?? '');
+      setTransactionDate(new Date().toISOString().slice(0, 10));
+      setLoadError('');
+      setIsLoading(false);
+    }, (error: unknown) => {
+      setLoadError(error instanceof Error ? error.message : 'Unable to load canteen balances.');
+      setIsLoading(false);
+    });
+  }, []);
+
+  const submitTransaction = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!empId || amount <= 0 || !description.trim() || !transactionDate || !formulaCode.trim()) {
+      setFormError('Employee, amount > 0, description, date, and formula code are required.');
+      return;
+    }
+    setFormError('');
+    try {
+      await canteenService.createTransaction(empId, amount, description.trim(), transactionDate, deductionType, formulaCode.trim());
+      await refresh();
+      setAmount(0);
+      setDescription('');
+    } catch (error) {
+      setFormError(error instanceof Error ? error.message : 'Unable to create canteen transaction.');
+    }
+  };
+
+  const updateStatus = async (id: string, status: CanteenTransactionStatus) => {
+    try {
+      if (status === 'deducted') {
+        await canteenService.markPayrollDeduction(id, 'Marked for payroll deduction.');
+      } else if (status === 'paid' || status === 'partially-paid') {
+        await canteenService.recordPayment(id, undefined, 'Recorded manual payment.');
+      } else {
+        await canteenService.updateTransaction(id, { status });
+      }
+      await refresh();
+    } catch (error) {
+      setFormError(error instanceof Error ? error.message : 'Unable to update canteen transaction.');
+    }
+  };
+
+  return (
+    <section className="crud-page">
+      <div className="page-heading-row">
+        <div>
+          <h2>Canteen Debt / Paycut Tracking</h2>
+          <p className="lead">Track canteen transactions and employee balances. Deductions remain formula and payroll-component ready, with no final payroll posting in this module.</p>
+        </div>
+        <EmployeePortalStatusBadge status="Phase 022 canteen debt" />
+      </div>
+
+      {loadError && <p className="form-error">{loadError}</p>}
+      {!loadError && !getCanteenServiceStatus().available && <p className="service-note">Canteen backend unavailable. Live persistence is required for this module.</p>}
+
+      <div className="crud-layout narrow">
+        <form className="form-card" onSubmit={submitTransaction}>
+          <h3>Add canteen transaction</h3>
+          {formError && <p className="form-error">{formError}</p>}
+          <div className="form-grid two-column">
+            <label>Employee
+              <select value={empId} onChange={(e) => setEmpId(e.target.value)}>
+                {employees.map((emp) => (
+                  <option key={emp.id} value={emp.id}>{emp.firstName} {emp.lastName} · {emp.employeeNumber}</option>
+                ))}
+              </select>
+            </label>
+            <label>Amount *
+              <input type="number" min="0.01" step="0.01" value={amount} onChange={(e) => setAmount(Number(e.target.value))} required />
+            </label>
+            <label>Description *
+              <input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="e.g. Lunch - May 6" required />
+            </label>
+            <label>Transaction date *
+              <input type="date" value={transactionDate} onChange={(e) => setTransactionDate(e.target.value)} required />
+            </label>
+            <label>Deduction type
+              <select value={deductionType} onChange={(e) => setDeductionType(e.target.value as CanteenDeductionType)}>
+                {deductionTypeOptions.map((t) => <option key={t} value={t}>{t}</option>)}
+              </select>
+            </label>
+            <label>Payroll formula code *
+              <input value={formulaCode} onChange={(e) => setFormulaCode(e.target.value)} placeholder="CONFIGURED_CANTEEN_DEDUCTION" required />
+            </label>
+          </div>
+          <div className="button-row">
+            <button className="primary" type="submit">Add transaction</button>
+          </div>
+        </form>
+
+        <div className="cards single-column">
+          {isLoading ? <EmptyStateCard title="Loading canteen transactions" message="Fetching transactions, balances, and payroll-ready references." /> : transactions.length ? transactions.map((tx) => (
+            <article className="record-card" key={tx.id}>
+              <div className="record-card-header">
+                <h3>{empName(employees, tx.employeeId)} — {tx.description}</h3>
+                <EmployeePortalStatusBadge status={tx.status} />
+              </div>
+              <p>Amount: {tx.amount} · Date: {tx.transactionDate} · Type: {tx.deductionType}</p>
+              <p>Formula: <code>{tx.payrollFormulaCode}</code> · Settled: {tx.settledAmount ?? 0}</p>
+              {tx.notes && <p>Notes: {tx.notes}</p>}
+              {tx.status === 'open' && (
+                <div className="button-row">
+                  <button className="primary" type="button" onClick={() => updateStatus(tx.id, 'paid')}>Record payment</button>
+                  <button className="secondary" type="button" onClick={() => updateStatus(tx.id, 'deducted')}>Mark deducted</button>
+                  <button className="secondary" type="button" onClick={() => updateStatus(tx.id, 'void')}>Void</button>
+                </div>
+              )}
+              {tx.status === 'partially-paid' && (
+                <div className="button-row">
+                  <button className="primary" type="button" onClick={() => updateStatus(tx.id, 'paid')}>Record remaining payment</button>
+                  <button className="primary" type="button" onClick={() => updateStatus(tx.id, 'deducted')}>Mark deducted</button>
+                  <button className="secondary" type="button" onClick={() => updateStatus(tx.id, 'void')}>Void</button>
+                </div>
+              )}
+            </article>
+          )) : <EmptyStateCard title="No transactions yet" message="Add a canteen transaction above." />}
+        </div>
+      </div>
+
+      <section className="role-admin-section">
+        <div>
+          <h3>Employee balance summary</h3>
+          <p className="lead">Running balances by employee. Balances update when transactions are created, paid, voided, or marked for payroll deduction.</p>
+        </div>
+        <div className="cards">
+          {isLoading ? <EmptyStateCard title="Loading ledger" message="Fetching live employee debt balances." /> : ledgers.length ? ledgers.map((ledger) => (
+            <article className="record-card" key={ledger.id}>
+              <div className="record-card-header">
+                <h3>{empName(employees, ledger.employeeId)}</h3>
+                <EmployeePortalStatusBadge status={ledger.source} />
+              </div>
+              <p>Balance: {ledger.balance} · Formula: <code>{ledger.formulaCode}</code></p>
+              {ledger.notes && <p>{ledger.notes}</p>}
+              <p>Last updated: {new Date(ledger.lastUpdatedAt).toLocaleString()}</p>
+            </article>
+          )) : <EmptyStateCard title="No ledger entries yet" message="Ledger entries are created automatically when transactions are added." />}
+        </div>
+      </section>
+    </section>
+  );
+}
