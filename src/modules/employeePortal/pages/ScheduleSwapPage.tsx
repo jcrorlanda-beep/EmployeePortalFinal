@@ -1,0 +1,2 @@
+import { scheduleSwapRequests } from '../services/schedulingService';
+export function ScheduleSwapPage() { return <section><h2>Temporary Schedule Swap Requests</h2><div className="cards">{scheduleSwapRequests.map((request) => <article className="record-card" key={request.id}><h3>{request.requesterEmployeeId} ↔ {request.targetEmployeeId}</h3><p>Schedule: {request.scheduleInstanceId}</p><p>Status: {request.status}</p></article>)}</div></section>; }

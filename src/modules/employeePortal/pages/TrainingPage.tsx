@@ -1,0 +1,2 @@
+import { trainingAssignments, trainingModules } from '../services/trainingService';
+export function TrainingPage() { return <section><h2>Training & Learning Hub</h2><div className="cards">{trainingModules.map((module) => <article className="record-card" key={module.id}><h3>{module.title}</h3><p>Category: {module.category}</p><p>Assignments: {trainingAssignments.filter((assignment) => assignment.moduleId === module.id).length}</p></article>)}</div></section>; }

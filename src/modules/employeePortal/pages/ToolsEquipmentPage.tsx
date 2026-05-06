@@ -1,0 +1,2 @@
+import { equipmentAssignments, equipmentItems } from '../services/equipmentService';
+export function ToolsEquipmentPage() { return <section><h2>Tools & Equipment Registry</h2><div className="cards">{equipmentItems.map((item) => <article className="record-card" key={item.id}><h3>{item.name}</h3><p>Asset: {item.assetTag}</p><p>Photo reference: {item.photoReference ?? 'Not set'}</p><p>Status: {item.status}</p><p>Assignments: {equipmentAssignments.filter((assignment) => assignment.equipmentItemId === item.id).length}</p></article>)}</div></section>; }

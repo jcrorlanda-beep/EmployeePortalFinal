@@ -1,0 +1,2 @@
+import { attendanceRecords } from '../services/timekeepingService';
+export function TimekeepingPage() { return <section><h2>Timekeeping Foundation</h2><p className="lead">Manual MVP clock events are correction-ready and can later be replaced by device feeds.</p><div className="cards">{attendanceRecords.map((record) => <article className="record-card" key={record.id}><h3>{record.type.toUpperCase()}</h3><p>Employee: {record.employeeId}</p><p>Clocked at: {record.clockedAt}</p><p>Correction: {record.correctionStatus}</p></article>)}</div></section>; }
