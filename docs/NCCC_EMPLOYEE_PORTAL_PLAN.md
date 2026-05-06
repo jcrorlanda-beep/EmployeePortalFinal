@@ -18,8 +18,8 @@ The NCCC Employee Portal is a standalone HR and workforce management MVP for Nor
 | Phase | Module | MVP Status |
 | --- | --- | --- |
 | 001 | Foundation, split files, pages, services, types, docs, Prisma-ready schema | Complete |
-| 002 | Employee CRUD | Complete with mock-safe create/list/update service and UI create action |
-| 003 | Departments / positions / roles | Complete with setup services and UI create actions |
+| 002 | Employee CRUD | Complete with usable frontend create/update forms, employee list, search/filtering, status badges, and profile summary card |
+| 003 | Departments / positions / roles | Not started as a full phase; Phase 002 added department, position, and role assignment foundations needed by employee CRUD |
 | 004 | Onboarding checklist | Complete foundation |
 | 005 | Training hub | Complete foundation |
 | 006 | SOP document library | Complete foundation |
@@ -58,6 +58,17 @@ The NCCC Employee Portal is a standalone HR and workforce management MVP for Nor
 - Required split-file folder structure exists.
 - Required module pages compile through `employeePortalRoutes.tsx`.
 - Services are mock-safe and database-ready.
+- Phase 002 added employee CRUD frontend foundations, department setup, position setup, and audit placeholder events for create/update actions.
 - Database schema contains all requested model names.
 - TalyerOS integration remains inactive.
 - Build command: `npm run build`.
+
+
+## Phase 002 Notes
+
+- Employee Management now supports session-scoped create/update flows, employee number/name validation, search and filtering by name, employment status, and department.
+- Departments and positions now support session-scoped create/update flows with active/inactive status instead of deletion.
+- Employee records include preferred name, role, contact details, emergency contact details, notes, and optional department/position assignment.
+- Every employee, department, and position create/update path records a placeholder audit event through the audit log service.
+- Service methods remain async and database-ready; no localStorage-first architecture, Prisma migrations, or TalyerOS integration were added.
+- Stop after Phase 002; Phase 003 should expand role/permission setup when requested.

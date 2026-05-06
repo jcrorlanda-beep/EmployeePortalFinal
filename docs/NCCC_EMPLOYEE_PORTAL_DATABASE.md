@@ -39,3 +39,8 @@ A future production implementation should add:
 ## Migration Safety
 
 No destructive migration is required or generated. Before production use, create a non-destructive migration plan with reviewed seed data and environment-specific `DATABASE_URL` configuration.
+
+
+## Phase 002 Data Layer Notes
+
+Employee, Department, and Position services remain in-memory only for the current MVP session when no live database connection exists. The async service method contracts are intentionally database-ready and now include create/update flows for employee CRUD, department setup, and position setup. No Prisma migrations were created or executed. Audit placeholder events are recorded for `employee.created`, `employee.updated`, `department.created`, `department.updated`, `position.created`, and `position.updated`.

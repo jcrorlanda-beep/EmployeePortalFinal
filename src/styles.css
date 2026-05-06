@@ -25,3 +25,30 @@ th, td { border-bottom: 1px solid #e5edf5; padding: 12px; text-align: left; }
 .checklist li { margin: 8px 0; }
 code { background: #f3f6fb; padding: 4px 6px; border-radius: 6px; }
 @media (max-width: 900px) { .portal-header, .portal-body { grid-template-columns: 1fr; } .portal-nav { position: static; max-height: none; } }
+.page-heading-row { display: flex; justify-content: space-between; gap: 16px; align-items: flex-start; margin-bottom: 20px; }
+.crud-page { display: grid; gap: 20px; }
+.crud-layout { display: grid; grid-template-columns: minmax(360px, 1.3fr) minmax(280px, .7fr); gap: 18px; align-items: start; }
+.crud-layout.narrow { grid-template-columns: minmax(320px, .85fr) minmax(320px, 1.15fr); }
+.form-card, .summary-card, .filter-card { background: white; border: 1px solid #dae4ef; border-radius: 18px; padding: 18px; box-shadow: 0 8px 22px rgba(15, 39, 66, .06); }
+.form-grid { display: grid; gap: 14px; }
+.form-grid.two-column { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.form-grid label, .filter-card label { color: #314159; display: grid; font-size: .86rem; font-weight: 800; gap: 6px; }
+.form-grid input, .form-grid select, .form-grid textarea, .filter-card input, .filter-card select { border: 1px solid #ccd8e6; border-radius: 10px; color: #172033; font: inherit; padding: 10px 12px; }
+.form-grid textarea { min-height: 86px; resize: vertical; }
+.full-width { grid-column: 1 / -1; }
+.button-row { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 16px; }
+.secondary, .link-button { border: 1px solid #bed0df; background: white; color: #166b8f; border-radius: 12px; cursor: pointer; font-weight: 800; padding: 10px 14px; }
+.link-button { border: 0; padding: 6px 8px; text-decoration: underline; }
+.form-error { background: #fff1f0; border: 1px solid #ffc9c4; border-radius: 12px; color: #9b211b; font-weight: 800; padding: 10px 12px; }
+.filter-card { display: grid; grid-template-columns: minmax(240px, 1fr) repeat(2, minmax(180px, .5fr)); gap: 14px; }
+.summary-name { color: #0f2742; font-size: 1.5rem; font-weight: 900; margin: 0 0 8px; }
+dl { display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 8px 12px; }
+dt { color: #536176; font-weight: 800; }
+dd { margin: 0; }
+.record-card-header { align-items: center; display: flex; gap: 12px; justify-content: space-between; }
+.single-column { grid-template-columns: 1fr; }
+.selected-row { background: #f0f9fc; }
+.status-badge-inactive { background: #f4f6f8; color: #5b6675; }
+.status-badge-probation, .status-badge-onboarding { background: #fff8e5; color: #7a4d00; }
+.status-badge-phase-002-crud, .status-badge-phase-002-setup { background: #e7f1ff; color: #1554a2; }
+@media (max-width: 1100px) { .crud-layout, .crud-layout.narrow, .filter-card { grid-template-columns: 1fr; } .form-grid.two-column { grid-template-columns: 1fr; } .page-heading-row { display: grid; } }
